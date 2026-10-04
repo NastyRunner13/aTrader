@@ -170,8 +170,11 @@ def test_volatility_range_matches_its_formula():
 
 
 def test_two_year_scenarios_are_ordered_and_low_confidence():
-    scenario = price_range(make_pack(), Horizon.TWO_YEARS)
+    pack = make_pack()  # fast growth (revenue +20%, profit +36%): the bear case must still fall
+    close = next(m.value for m in pack.metrics if m.name == "close")
+    scenario = price_range(pack, Horizon.TWO_YEARS)
     assert scenario is not None and scenario.method == "scenario"
     assert scenario.base is not None and scenario.low < scenario.base < scenario.high
+    assert close is not None and scenario.low < close * 0.8 + 1e-9
     assert scenario.confidence == Confidence.LOW
     assert price_range(make_pack(facts=[]), Horizon.TWO_YEARS) is None  # no EPS
