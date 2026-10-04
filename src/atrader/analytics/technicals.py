@@ -56,6 +56,12 @@ def technical_metrics(
     vol = ind.annualised_volatility(close)
     add("volatility20", "Annualised volatility (20 sessions)",
         None if vol is None else vol * 100, "%", "stdev(log returns, 20) * sqrt(252)")
+    long_window = min(len(close) - 1, 250)  # the outlook price ranges use this steadier figure
+    if long_window >= 60:
+        long_vol = ind.annualised_volatility(close, long_window)
+        add("volatility_1y", f"Annualised volatility ({long_window} sessions)",
+            None if long_vol is None else long_vol * 100, "%",
+            f"stdev(log returns, {long_window}) * sqrt(252)")
     for sessions, label in ((21, "1M"), (63, "3M"), (126, "6M"), (252, "12M")):
         value = ind.period_return(close, sessions)
         add(f"return_{label.lower()}", f"Price return {label} ({sessions} sessions)",

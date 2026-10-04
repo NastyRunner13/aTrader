@@ -111,7 +111,6 @@ class NseEvidenceBuilder:
         return EvidencePack(
             listing=listing,
             cutoff=cutoff,
-            horizon=request.horizon,
             built_at=now_utc(),
             facts=tuple(facts),
             metrics=tuple(metrics),

@@ -2,7 +2,7 @@
 
 Last updated **4 October 2026**. Feature IDs (F01–F37) come from [docs/03](docs/03-feature-map.md) and delivery stages from [docs/09](docs/09-validation-and-roadmap.md). Update this file whenever a feature changes status.
 
-**Where we are:** the first working version runs end to end on live NSE data **with a real model**. On 4 October 2026, a compact run on L&T through OpenRouter (`stealth/space-bunny-alpha`) made 6 calls, all valid on the first attempt, at zero cost. Every figure checked against the XBRL facts was correct. Next: run the other nine pilot companies.
+**Where we are:** the first working version runs end to end on live NSE data **with a real model**, and ends in a **signal card**: 0–100 scores and signals for 1 month, 6 months and 2 years. Agents in the same step run in parallel. On 4 October 2026, a compact run on L&T made 6 calls, all valid on the first attempt, at zero cost, in 52 s of model time (about 88 s before the parallel graph). The scoring rules and weights are starting priors; the next step is to validate them with the `--cutoff` backtest (M2) and run the other nine pilot companies.
 
 Status key: ✅ done · 🟡 partial · ⬜ not started · ⏸ deferred by decision
 
@@ -25,11 +25,13 @@ Status key: ✅ done · 🟡 partial · ⬜ not started · ⏸ deferred by decis
 - Indicators: SMA 20/50/200, RSI, MACD, ATR, volatility, period returns, volume ratio, liquidity, and relative strength vs Nifty 50.
 - Chart signals (versioned rules): moving-average trend, confirmed range breakout, unusual volume.
 - Fundamentals: YoY/QoQ growth, margins, other income as a share of PBT, trailing EPS, P/E, approximate market cap, and Nifty P/E context.
-- Vetoes: stale prices, short history, old results, low liquidity and missing core data cap or block the final assessment.
+- Vetoes: stale prices, short history, old results, low liquidity and missing core data hold the signal at Neutral or withhold it.
+- Scorecard (`scoring.py`, `ranges.py`): rule-based area scores with cited points, analyst adjustments (±15, verified), news from rated events, horizon weights, a manager adjustment (±5), signal bands, volatility ranges (1M/6M) and EPS × P/E scenarios (2Y).
 
 **Agents and graph** (`src/atrader/agents/`, `src/atrader/graph/`)
-- TradingAgents-style agents, one file each: market, fundamentals and news analysts; bull and bear researchers; research manager; trader; aggressive, conservative and neutral debators; portfolio manager.
-- Modes: `data_only` (0 calls), `compact` (6 calls, cap 8) and `full` (13 calls, cap 17).
+- TradingAgents-style agents, one file each: market, fundamentals and news analysts; bull and bear researchers; aggressive, conservative and neutral debators; portfolio manager. The trader and research manager were removed on 4 October 2026: the signal card replaces the trader's plan, and the portfolio manager judges the debate.
+- Parallel steps: the analysts; bull and bear in each debate round; the three risk debators. Up to 4 model calls at once.
+- Modes: `data_only` (0 calls, code-only scorecard), `compact` (6 calls, cap 8) and `full` (11 calls, cap 14).
 - Claim verification: invented citations, and numbers without a backing fact or metric, are marked unsupported and never reach later agents.
 
 **Model gateway** (`src/atrader/llm/`)
@@ -65,9 +67,9 @@ Status key: ✅ done · 🟡 partial · ⬜ not started · ⏸ deferred by decis
 | F15 | Trend, momentum, volume, volatility | P0 | ✅ | Tested indicators |
 | F16 | Chart-pattern detection | P0 simple | ✅ | Three versioned rules. Held-out validation is part of F32 |
 | F17 | Relative strength and sector context | P0 | 🟡 | 3M vs Nifty 50 (price index). Missing: sector index comparison (the data is already ingested) |
-| F18 | Bull/bear debate and judge | P0 | ✅ | Claim IDs, validated challenges, bounded rounds; research manager in full mode |
-| F19 | Hypothetical strategy planner | P0 | ✅ | Trader writes stance, conditions, invalidation and scenarios; no execution tools |
-| F20 | Risk review + final manager | P0 | ✅ | Three risk debators (full), portfolio manager, code vetoes after synthesis |
+| F18 | Bull/bear debate and judge | P0 | ✅ | Claim IDs, validated challenges, bounded parallel rounds; the portfolio manager judges |
+| F19 | Hypothetical strategy planner | P0 | 🟡 | Replaced by the signal card: per-horizon score, signal, drivers, up/down triggers and price ranges. Scores not yet validated (F32) |
+| F20 | Risk review + final manager | P0 | ✅ | Three parallel risk debators review the draft scorecard (full); portfolio manager; code vetoes on the scorecard |
 | F21 | Evidence verification and coverage | P0 | ✅ | Citation and number checks; coverage carried into the report. Human semantic audit is part of F32 |
 | F22 | Research memory and change detection | P0 archive | 🟡 | Report archive. Missing: compare-to-previous-report, reflection |
 
@@ -79,7 +81,7 @@ Status key: ✅ done · 🟡 partial · ⬜ not started · ⏸ deferred by decis
 | F24 | Free-only OpenRouter gateway | P0 | ✅ | Live-tested 2026-10-04: zero cost reported; the run cap held at 8 when a bad config produced empty answers; reasoning models get a bounded effort and output budget |
 | F25 | Resume, cancel, retry, partial result | P0 | 🟡 | Resume after quota pause, retry, repair, partial reports. Missing: cancel |
 | F26 | Evidence-grounded follow-up questions | P1 | ⬜ | |
-| F27 | Markdown/JSON export; print view | P0 | ✅ | Markdown and JSON written for every run |
+| F27 | Markdown/JSON export; print view | P0 | ✅ | Signal card (Markdown and terminal), full-analysis Markdown and JSON for every run |
 | F28 | Side-by-side comparison | P1 | ⬜ | |
 | F29 | Deterministic stock screener | P1 | ⬜ | Groundwork done: bhavcopy already stores every NSE equity |
 | F30 | Local watchlist event alerts | P1 | ⬜ | |
@@ -91,7 +93,7 @@ Status key: ✅ done · 🟡 partial · ⬜ not started · ⏸ deferred by decis
 | F36 | Public / multi-user deployment | P2 cond. | ⏸ | Needs data rights and a SEBI review |
 | F37 | Broker execution | Out of scope | ⏸ | Not planned |
 
-**Tally (37 features):** 10 done, 11 partial, 11 not started, 5 deferred. Of the 25 first-release (P0) features, 10 are done, 11 partial and 4 not started (F05, F07, F12, F32).
+**Tally (37 features):** 9 done, 12 partial, 11 not started, 5 deferred. Of the 25 first-release (P0) features, 9 are done, 12 partial and 4 not started (F05, F07, F12, F32).
 
 ### Delivery stages (docs/09)
 
@@ -121,6 +123,7 @@ Ordered by dependency. Each milestone ends with something you can run.
 - [ ] Build a 30-case research-quality set (unit traps, restatements, missing data, injection text in documents).
 - [ ] Human-audit sampled claims for support; report the denominator.
 - [ ] Baselines: single-model synthesis vs compact vs full.
+- [ ] Validate the scorecard: run code-only scorecards at monthly `--cutoff` dates across the pilot set (no model calls), check whether higher scores preceded better 1M/6M returns, then tune the rule points and horizon weights.
 - **Exit:** a measured answer to "is full mode worth 2× the calls?"
 
 ### M3 — Indian data depth (F04, F05, F07, F08, F09, F17)

@@ -7,9 +7,10 @@ Retrieved third-party text is fenced as data, never instructions.
 from __future__ import annotations
 
 from atrader.agents.state import AgentState
-from atrader.contracts import ClaimStatus, EvidencePack
+from atrader.analytics.scoring import SIGNAL_BANDS, build_scorecard, score_pillars
+from atrader.contracts import ClaimStatus, EvidencePack, Pillar, PriceRange
 from atrader.data.providers.nse_announcements import ORDER_CATEGORIES
-from atrader.formatting import format_value
+from atrader.formatting import format_value, rupees
 
 # --- evidence pack --------------------------------------------------------------------------
 
@@ -17,8 +18,8 @@ from atrader.formatting import format_value
 def company(pack: EvidencePack) -> str:
     listing = pack.listing
     return (f"## Company\n{listing.name}, {listing.exchange}: {listing.symbol}, ISIN "
-            f"{listing.isin}. Knowledge cutoff {pack.cutoff} (IST). Horizon: "
-            f"{pack.horizon.description}.")
+            f"{listing.isin}. Knowledge cutoff {pack.cutoff} (IST). The outlook covers three "
+            "horizons: 1 month, 6 months and 2 years.")
 
 
 def financials(pack: EvidencePack) -> str:
@@ -141,33 +142,68 @@ def debate(state: AgentState) -> str:
     return "\n".join(lines)
 
 
-def research_decision(state: AgentState) -> str:
-    decision = state.get("research_decision")
-    if not decision:
-        return ""
-    return (f"## Research manager\nStronger side: {decision.stronger_side}; assessment "
-            f"{decision.assessment.value}. {decision.rationale}\nUnresolved: "
-            f"{'; '.join(decision.unresolved) or 'none'}")
-
-
-def trader_plan(state: AgentState) -> str:
-    plan = state.get("trader_plan")
-    if not plan:
-        return ""
-    lines = [f"## Trader's hypothetical plan\nStance: {plan.stance}"]
-    lines += [f"- condition: {c}" for c in plan.conditions_to_consider]
-    lines += [f"- invalidation: {c}" for c in plan.invalidation]
-    lines += [f"- scenario {s.name}: {s.description}" for s in plan.scenarios]
+def base_scores(state: AgentState, *pillars: Pillar) -> str:
+    """The code-computed scores an analyst may adjust, with every rule's points."""
+    scores = state.get("base_scores", {})
+    lines = ["## Code-computed scores (each area starts at 50; each rule adds or subtracts "
+             "points)"]
+    for pillar in pillars:
+        score = scores.get(pillar.value)
+        if score is None or score.score is None:
+            lines.append(f"### {pillar.value}: not scored ({score.note if score else 'no data'})")
+            continue
+        lines.append(f"### {pillar.value}: {score.score}/100, confidence {score.confidence}")
+        lines += [f"- {f.points:+.1f} {f.label} {_ids(f.evidence_ids)}" for f in score.factors]
+        if score.note:
+            lines.append(f"Caveat: {score.note}")
     return "\n".join(lines)
+
+
+def draft_scorecard(state: AgentState) -> str:
+    """The scorecard as it stands after the analysts, before the portfolio manager."""
+    pack = state["pack"]
+    assert pack is not None
+    pillars = score_pillars(state.get("base_scores", {}), state.get("analyst_reports", {}))
+    card = build_scorecard(pack, pillars, state.get("vetoes", []))
+    lines = ["## Draft scorecard (computed in code from the analysts' work)",
+             "Area scores, 0-100 (50 = no lean either way):"]
+    for p in card.pillars:
+        if p.score is None:
+            lines.append(f"- {p.pillar.value}: not scored ({p.note})")
+            continue
+        top = sorted(p.factors, key=lambda f: -abs(f.points))[:3]
+        adjusted = (f"; the analyst adjusted it {p.adjustment:+d}: {p.adjustment_reason}"
+                    if p.adjustment else "")
+        lines.append(f"- {p.pillar.value}: {p.score} (code {p.base}{adjusted}). Main factors: "
+                     + "; ".join(f"{f.label} ({f.points:+.0f})" for f in top))
+    lines.append("Horizons (weights technical / growth_quality / valuation / news, in %):")
+    for h in card.horizons:
+        weights = " / ".join(str(h.weights[p.value]) for p in Pillar)
+        result = (f"{h.score}, {h.signal.label}" if h.score is not None
+                  else "no signal (too little data)")
+        lines.append(f"- {h.horizon.value} ({h.horizon.label}): {result}; weights {weights}; "
+                     f"{price_range(h.price_range)}")
+    bands = ", ".join(f"{signal.label} from {floor}" for floor, signal in SIGNAL_BANDS)
+    lines.append(f"Signal bands: {bands}.")
+    return "\n".join(lines)
+
+
+def price_range(value: PriceRange | None) -> str:
+    if value is None:
+        return "no price range (missing inputs)"
+    if value.method == "scenario" and value.base is not None:
+        return (f"scenarios bear {rupees(value.low)} / base {rupees(value.base)} / bull "
+                f"{rupees(value.high)}")
+    return f"typical range {rupees(value.low)} to {rupees(value.high)}"
 
 
 def risk_reviews(state: AgentState) -> str:
     reviews = state.get("risk_reviews", [])
     if not reviews:
         return ""
-    lines = ["## Risk reviews"]
+    lines = ["## Risk reviews of the draft scorecard"]
     for r in reviews:
-        lines.append(f"### {r.perspective}: {r.verdict}. {r.rationale}")
+        lines.append(f"### {r.perspective}: draft scores {r.verdict}. {r.rationale}")
         lines += [f"- objection: {o}" for o in r.objections]
         lines += [f"- constraint: {c}" for c in r.constraints]
     return "\n".join(lines)
@@ -184,6 +220,10 @@ def vetoes(state: AgentState) -> str:
 
 def join(*parts: str) -> str:
     return "\n\n".join(p for p in parts if p)
+
+
+def _ids(ids: list[str]) -> str:
+    return " ".join(f"[{i}]" for i in ids)
 
 
 def _pct(value: float | None) -> str:

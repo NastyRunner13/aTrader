@@ -1,5 +1,3 @@
-from collections.abc import Hashable
-
 from langgraph.graph import END, START, StateGraph
 
 from atrader.agents import (
@@ -13,27 +11,27 @@ from atrader.agents import (
     create_neutral_debator,
     create_news_analyst,
     create_portfolio_manager,
-    create_research_manager,
-    create_trader,
 )
 from atrader.contracts import Mode
-from atrader.graph.conditional_logic import DEBATE_DONE, ConditionalLogic
-from atrader.graph.nodes import finalize_node
+from atrader.graph.conditional_logic import DEBATERS, ConditionalLogic
+from atrader.graph.nodes import debate_round_node, finalize_node
 
 ANALYSTS = {
     "market": create_market_analyst,
     "fundamentals": create_fundamentals_analyst,
     "news": create_news_analyst,
 }
+RISK_TEAM = ["aggressive_debator", "conservative_debator", "neutral_debator"]
 
 
 class GraphSetup:
-    """Builds the research workflow.
+    """Builds the research workflow. Agents joined by ∥ run at the same time.
 
-    compact: analysts → bull ⇄ bear (1 round) → portfolio manager
-    full:    analysts → bull ⇄ bear (2 rounds) → research manager → trader
-             → aggressive → conservative → neutral → portfolio manager
-    Both end in `finalize`, where code applies the vetoes.
+    compact:   analysts ∥ → bull ∥ bear (1 round) → portfolio manager
+    full:      analysts ∥ → bull ∥ bear (2 rounds) → aggressive ∥ conservative ∥ neutral
+               → portfolio manager
+    data_only: no agents.
+    All end in `finalize`, where code builds the scorecard and applies the vetoes.
     """
 
     def __init__(self, quick_llm, deep_llm, data_steward, conditional_logic: ConditionalLogic):
@@ -65,33 +63,29 @@ class GraphSetup:
             [*analyst_nodes, "finalize"],
         )
 
-        # Research team: the debate starts when every analyst has filed its report.
+        # Research team: once every analyst has filed, bull and bear argue in parallel
+        # rounds. `debate_round` waits for both sides before the next round starts.
+        workflow.add_node("debate_round", debate_round_node)
         workflow.add_node("bull_researcher", create_bull_researcher(self.quick_llm))
         workflow.add_node("bear_researcher", create_bear_researcher(self.quick_llm))
-        workflow.add_edge(analyst_nodes, "bull_researcher")
+        workflow.add_edge(analyst_nodes, "debate_round")
+        workflow.add_edge(DEBATERS, "debate_round")
 
-        after_debate = "research_manager" if mode == Mode.FULL else "portfolio_manager"
-        debate_paths: dict[Hashable, str] = {"bull_researcher": "bull_researcher",
-                        "bear_researcher": "bear_researcher",
-                        DEBATE_DONE: after_debate}
-        for node in ("bull_researcher", "bear_researcher"):
-            workflow.add_conditional_edges(node, self.conditional_logic.should_continue_debate,
-                                           debate_paths)
+        after_debate = RISK_TEAM if mode == Mode.FULL else ["portfolio_manager"]
+        workflow.add_conditional_edges(
+            "debate_round",
+            lambda state: self.conditional_logic.should_continue_debate(state, after_debate),
+            [*DEBATERS, *after_debate],
+        )
 
-        # Full mode only: research manager, trader and the risk team.
+        workflow.add_node("portfolio_manager", create_portfolio_manager(self.deep_llm))
+        workflow.add_edge("portfolio_manager", "finalize")
+
+        # Full mode only: the risk team reviews the draft scorecard in parallel.
         if mode == Mode.FULL:
-            workflow.add_node("research_manager", create_research_manager(self.deep_llm))
-            workflow.add_node("trader", create_trader(self.quick_llm))
             workflow.add_node("aggressive_debator", create_aggressive_debator(self.quick_llm))
             workflow.add_node("conservative_debator",
                               create_conservative_debator(self.quick_llm))
             workflow.add_node("neutral_debator", create_neutral_debator(self.quick_llm))
-            workflow.add_edge("research_manager", "trader")
-            workflow.add_edge("trader", "aggressive_debator")
-            workflow.add_edge("aggressive_debator", "conservative_debator")
-            workflow.add_edge("conservative_debator", "neutral_debator")
-            workflow.add_edge("neutral_debator", "portfolio_manager")
-
-        workflow.add_node("portfolio_manager", create_portfolio_manager(self.deep_llm))
-        workflow.add_edge("portfolio_manager", "finalize")
+            workflow.add_edge(RISK_TEAM, "portfolio_manager")
         return workflow

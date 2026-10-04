@@ -37,7 +37,8 @@ class Settings(BaseSettings):
     # and ambiguous attempts (docs/08). Raise the limit only if the account allows it.
     daily_request_limit: int = 50
     daily_request_reserve: int = 10
-    max_concurrent_requests: int = 2
+    # Parallel model calls: the analysts, bull and bear, and the risk team each run at once.
+    max_concurrent_requests: int = 4
     request_timeout_s: float = 300.0  # reasoning models can take minutes on long prompts
     # For reasoning models this budget covers the hidden reasoning and the answer, so it
     # is generous; free routes cost nothing per token, only time.

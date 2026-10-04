@@ -18,21 +18,65 @@ class Coverage(StrEnum):
 
 
 class Horizon(StrEnum):
-    SWING = "swing"  # roughly 5-20 trading sessions
-    INVESTMENT = "investment"  # roughly 6-12 months
+    """The three outlook horizons every report scores."""
+
+    ONE_MONTH = "1m"
+    SIX_MONTHS = "6m"
+    TWO_YEARS = "2y"
 
     @property
-    def description(self) -> str:
-        return {
-            Horizon.SWING: "swing research, roughly 5-20 trading sessions",
-            Horizon.INVESTMENT: "investment research, roughly 6-12 months",
-        }[self]
+    def label(self) -> str:
+        return {Horizon.ONE_MONTH: "1 month", Horizon.SIX_MONTHS: "6 months",
+                Horizon.TWO_YEARS: "2 years"}[self]
+
+    @property
+    def sessions(self) -> int:
+        """Approximate trading sessions in the horizon."""
+        return {Horizon.ONE_MONTH: 21, Horizon.SIX_MONTHS: 126, Horizon.TWO_YEARS: 504}[self]
+
+
+class Pillar(StrEnum):
+    """One scored area of the research. Each belongs to the analyst that reviews it."""
+
+    TECHNICAL = "technical"
+    GROWTH_QUALITY = "growth_quality"
+    VALUATION = "valuation"
+    NEWS = "news"
+
+    @property
+    def label(self) -> str:
+        return {Pillar.TECHNICAL: "Technical", Pillar.GROWTH_QUALITY: "Growth & quality",
+                Pillar.VALUATION: "Valuation", Pillar.NEWS: "News & catalysts"}[self]
+
+    @property
+    def agent(self) -> str:
+        return {Pillar.TECHNICAL: "market_analyst", Pillar.GROWTH_QUALITY: "fundamentals_analyst",
+                Pillar.VALUATION: "fundamentals_analyst", Pillar.NEWS: "news_analyst"}[self]
+
+
+class Signal(StrEnum):
+    STRONG_BULLISH = "strong_bullish"
+    BULLISH = "bullish"
+    NEUTRAL = "neutral"
+    BEARISH = "bearish"
+    STRONG_BEARISH = "strong_bearish"
+    INSUFFICIENT_DATA = "insufficient_data"
+
+    @property
+    def label(self) -> str:
+        return self.value.replace("_", " ").title()
+
+
+class Confidence(StrEnum):
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
 
 
 class Mode(StrEnum):
-    DATA_ONLY = "data_only"  # no model calls
+    DATA_ONLY = "data_only"  # no model calls; a code-only scorecard
     COMPACT = "compact"  # 6 planned calls
-    FULL = "full"  # 16 planned calls
+    FULL = "full"  # 11 planned calls
 
 
 class Assessment(StrEnum):

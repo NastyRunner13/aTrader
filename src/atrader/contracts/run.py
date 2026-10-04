@@ -7,24 +7,15 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from atrader.contracts.agents import (
-    AgentReport,
-    DebateTurn,
-    JudgeVerdict,
-    Reason,
-    RiskReview,
-    StrategyPlan,
-    Synthesis,
-    Veto,
-)
-from atrader.contracts.common import Assessment, Horizon, Mode, RunStatus
+from atrader.contracts.agents import AgentReport, DebateTurn, RiskReview, Synthesis, Veto
+from atrader.contracts.common import Mode, RunStatus
 from atrader.contracts.evidence import CoverageEntry, EvidencePack
+from atrader.contracts.scoring import Scorecard
 
 
 class ResearchRequest(BaseModel):
     symbol: str
     exchange: Literal["NSE"] = "NSE"
-    horizon: Horizon = Horizon.SWING
     mode: Mode = Mode.COMPACT
     cutoff: date | None = Field(
         default=None, description="Knowledge cutoff; None means the latest completed data."
@@ -55,21 +46,13 @@ class ResearchReport(BaseModel):
     status: RunStatus
     request: ResearchRequest
     pack: EvidencePack | None
-    # None for data-only runs, which make no AI assessment.
-    assessment: Assessment | None
-    assessment_before_vetoes: Assessment | None = None
+    scorecard: Scorecard | None
     vetoes: list[Veto] = Field(default_factory=list)
     coverage: list[CoverageEntry] = Field(default_factory=list)
     analyst_reports: list[AgentReport] = Field(default_factory=list)
     debate: list[DebateTurn] = Field(default_factory=list)
-    research_decision: JudgeVerdict | None = None
-    trader_plan: StrategyPlan | None = None
     risk_reviews: list[RiskReview] = Field(default_factory=list)
     final_synthesis: Synthesis | None = None
     model_calls: list[ModelCall] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
-
-    @property
-    def top_reasons(self) -> list[Reason]:
-        return self.final_synthesis.top_reasons if self.final_synthesis else []

@@ -15,7 +15,14 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from atrader.contracts.common import AgentStatus, Assessment, ClaimKind, ClaimStatus
+from atrader.contracts.common import (
+    AgentStatus,
+    Assessment,
+    ClaimKind,
+    ClaimStatus,
+    Horizon,
+    Pillar,
+)
 
 # ---------------------------------------------------------------------------------------
 # Claims
@@ -48,9 +55,28 @@ class Claim(ClaimDraft):
 # ---------------------------------------------------------------------------------------
 
 
-class AnalystOutput(BaseModel):
+class ScoreAdjustment(BaseModel):
+    pillar: Pillar = Field(description="The code-computed score you are adjusting (your own).")
+    points: int = Field(description="Between -15 and +15. Code clamps anything outside.")
+    reason: str = Field(description="One sentence: what the scoring rules missed.")
+    evidence_ids: list[str] = Field(default_factory=list, description="At least one ID.")
+
+
+class EventRating(BaseModel):
+    event: str = Field(description="One sentence naming the event.")
+    impact: int = Field(
+        description="-2 clearly negative, -1, 0 neutral, +1, +2 clearly positive for the "
+        "company's prospects."
+    )
+    materiality: Literal["low", "medium", "high"] = Field(
+        description="How much the event matters relative to the company's size."
+    )
+    evidence_ids: list[str] = Field(default_factory=list, description="A or N IDs.")
+
+
+class _AnalystFields(BaseModel):
     stance: Assessment = Field(
-        description="What the evidence in your area suggests for the horizon. Use "
+        description="What the evidence in your area suggests overall. Use "
         "insufficient_evidence when your sections are too thin to judge."
     )
     summary: str = Field(description="Three to five sentences. No claims without IDs.")
@@ -58,6 +84,20 @@ class AnalystOutput(BaseModel):
     gaps: list[str] = Field(
         default_factory=list, description="Data you needed but the pack does not contain."
     )
+
+
+class AnalystOutput(_AnalystFields):
+    score_adjustments: list[ScoreAdjustment] = Field(
+        default_factory=list, max_length=2,
+        description="Usually empty. Adjust a code-computed score only for something its "
+        "rules miss.",
+    )
+
+
+class NewsAnalystOutput(_AnalystFields):
+    """The news analyst rates events; code turns the ratings into the news score."""
+
+    events: list[EventRating] = Field(default_factory=list, max_length=8)
 
 
 class AgentReport(BaseModel):
@@ -68,6 +108,8 @@ class AgentReport(BaseModel):
     summary: str = ""
     claims: list[Claim] = Field(default_factory=list)
     gaps: list[str] = Field(default_factory=list)
+    score_adjustments: list[ScoreAdjustment] = Field(default_factory=list)  # verified
+    events: list[EventRating] = Field(default_factory=list)  # verified
     model_call_ids: list[str] = Field(default_factory=list)
     prompt_version: str = ""
     error: str | None = None
@@ -115,59 +157,20 @@ class DebateTurn(BaseModel):
 
 
 # ---------------------------------------------------------------------------------------
-# Research judge
-# ---------------------------------------------------------------------------------------
-
-
-class JudgeOutput(BaseModel):
-    stronger_side: Literal["bull", "bear", "balanced"]
-    assessment: Assessment
-    resolved: list[str] = Field(default_factory=list, description="Disputes settled by evidence.")
-    unresolved: list[str] = Field(default_factory=list)
-    decisive_claim_ids: list[str] = Field(default_factory=list)
-    rationale: str
-
-
-class JudgeVerdict(JudgeOutput):
-    status: AgentStatus = AgentStatus.COMPLETED
-    model_call_ids: list[str] = Field(default_factory=list)
-    prompt_version: str = ""
-
-
-# ---------------------------------------------------------------------------------------
-# Hypothetical strategy (never an order)
-# ---------------------------------------------------------------------------------------
-
-
-class Scenario(BaseModel):
-    name: str
-    description: str
-    triggers: list[str] = Field(default_factory=list)
-
-
-class StrategyOutput(BaseModel):
-    stance: Literal["consider_long", "watch", "avoid", "no_view"]
-    conditions_to_consider: list[str] = Field(default_factory=list)
-    invalidation: list[str] = Field(default_factory=list)
-    scenarios: list[Scenario] = Field(default_factory=list, max_length=4)
-    evidence_ids: list[str] = Field(default_factory=list)
-
-
-class StrategyPlan(StrategyOutput):
-    status: AgentStatus = AgentStatus.COMPLETED
-    model_call_ids: list[str] = Field(default_factory=list)
-    prompt_version: str = ""
-
-
-# ---------------------------------------------------------------------------------------
 # Risk reviewers
 # ---------------------------------------------------------------------------------------
 
 
 class RiskOutput(BaseModel):
-    verdict: Literal["support", "caution", "oppose"]
+    verdict: Literal["too_high", "fair", "too_low"] = Field(
+        description="Are the draft scores too optimistic (too_high), fair, or too "
+        "pessimistic (too_low) given the risks you see?"
+    )
     objections: list[str] = Field(default_factory=list)
-    constraints: list[str] = Field(default_factory=list)
+    constraints: list[str] = Field(
+        default_factory=list, description="Conditions that should hold before relying on "
+        "the signal."
+    )
     evidence_ids: list[str] = Field(default_factory=list)
     rationale: str
 
@@ -189,14 +192,34 @@ class Reason(BaseModel):
     evidence_ids: list[str] = Field(default_factory=list)
 
 
+class HorizonNote(BaseModel):
+    horizon: Horizon
+    adjustment: int = Field(
+        default=0, description="Between -5 and +5 points on the draft score, only where the "
+        "debate or risk reviews show it misses something material. Usually 0."
+    )
+    adjustment_reason: str = ""
+    drivers: list[str] = Field(
+        default_factory=list, max_length=3,
+        description="What most drives this horizon's view, one short line each.",
+    )
+    up_if: list[str] = Field(
+        default_factory=list, max_length=3,
+        description="Observable events that would raise the signal.",
+    )
+    down_if: list[str] = Field(
+        default_factory=list, max_length=3,
+        description="Observable events that would lower the signal.",
+    )
+
+
 class SynthesisOutput(BaseModel):
-    assessment: Assessment
-    summary: str = Field(description="Four to six sentences for a careful reader.")
-    top_reasons: list[Reason] = Field(default_factory=list, max_length=5)
-    key_risks: list[Reason] = Field(default_factory=list, max_length=5)
-    strengthen_if: list[str] = Field(default_factory=list)
-    weaken_if: list[str] = Field(default_factory=list)
-    invalidate_if: list[str] = Field(default_factory=list)
+    summary: str = Field(description="Two or three plain sentences a non-expert understands.")
+    pros: list[Reason] = Field(default_factory=list, max_length=5)
+    cons: list[Reason] = Field(default_factory=list, max_length=5)
+    horizons: list[HorizonNote] = Field(
+        default_factory=list, max_length=3, description="One note each for 1m, 6m and 2y."
+    )
     unresolved: list[str] = Field(default_factory=list)
 
 
@@ -213,8 +236,8 @@ class Synthesis(SynthesisOutput):
 
 
 class Veto(BaseModel):
-    """A code-enforced constraint. `block` forces insufficient evidence; `cap` limits
-    a supportive assessment to mixed. A persuasive narrative cannot lift either."""
+    """A code-enforced constraint. `block` withholds every signal; `cap` holds each
+    horizon's score at Neutral or below. A persuasive narrative cannot lift either."""
 
     code: str
     severity: Literal["block", "cap", "note"]

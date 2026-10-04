@@ -14,7 +14,7 @@ from datetime import date
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from atrader.config import Settings, get_settings
-from atrader.contracts import Horizon, Mode, ResearchReport, ResearchRequest, RunStatus
+from atrader.contracts import Mode, ResearchReport, ResearchRequest, RunStatus
 from atrader.data.evidence_builder import EvidenceSource, NseEvidenceBuilder
 from atrader.data.http import PoliteClient
 from atrader.data.store import MarketStore
@@ -31,10 +31,12 @@ from atrader.report.builder import build_report
 from atrader.report.writer import write_report
 
 # Model calls per mode (docs/08). The cap covers retries and schema repairs.
+# compact: 3 analysts + bull + bear + portfolio manager.
+# full: 3 analysts + 2 debate rounds of 2 + 3 risk reviewers + portfolio manager.
 MODES = {
     Mode.DATA_ONLY: {"debate_rounds": 0, "planned_calls": 0, "max_calls": 0},
     Mode.COMPACT: {"debate_rounds": 1, "planned_calls": 6, "max_calls": 8},
-    Mode.FULL: {"debate_rounds": 2, "planned_calls": 13, "max_calls": 17},
+    Mode.FULL: {"debate_rounds": 2, "planned_calls": 11, "max_calls": 14},
 }
 
 
@@ -62,9 +64,9 @@ class ResearchGraph:
         self._on_progress = on_progress
         self._runs = RunRegistry(self.settings.db_path)
 
-    def run(self, symbol: str, *, mode: Mode = Mode.COMPACT, horizon: Horizon = Horizon.SWING,
+    def run(self, symbol: str, *, mode: Mode = Mode.COMPACT,
             cutoff: date | None = None) -> ResearchReport:
-        request = ResearchRequest(symbol=symbol, mode=mode, horizon=horizon, cutoff=cutoff)
+        request = ResearchRequest(symbol=symbol, mode=mode, cutoff=cutoff)
         run_id = uuid.uuid4().hex
         return self._execute(run_id, request, self.dry_run, new=True)
 
@@ -104,8 +106,8 @@ class ResearchGraph:
                 raise
             report = build_report(run_id, request, state, gateway.calls())
 
-        markdown_path, _ = write_report(report, self.settings.reports_dir)
-        self._runs.set_status(run_id, report.status, markdown_path)
+        card_path, *_ = write_report(report, self.settings.reports_dir)
+        self._runs.set_status(run_id, report.status, card_path)
         return report
 
     def _gateway(self, run_id: str, mode: Mode, dry_run: bool, stack: ExitStack) -> LLMGateway:

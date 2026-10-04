@@ -18,7 +18,6 @@ from atrader.contracts import (
     CoverageEntry,
     EvidencePack,
     FinancialFact,
-    Horizon,
     Listing,
     PriceBar,
     ResearchRequest,
@@ -84,7 +83,7 @@ def make_facts() -> list[FinancialFact]:
 
 
 def make_pack(*, bars: list[PriceBar] | None = None, facts: list[FinancialFact] | None = None,
-              horizon: Horizon = Horizon.SWING, with_text: bool = True) -> EvidencePack:
+              with_text: bool = True) -> EvidencePack:
     bars = make_bars() if bars is None else bars
     facts = make_facts() if facts is None else facts
     metrics = technical_metrics(bars) + detect_patterns(bars)
@@ -102,7 +101,7 @@ def make_pack(*, bars: list[PriceBar] | None = None, facts: list[FinancialFact] 
             evidence_id="S1", period_end=date(2026, 6, 30), promoter_pct=55.0, public_pct=45.0,
             published_at=published, source=SourceRef(provider="test.shareholding"))]
     return EvidencePack(
-        listing=LISTING, cutoff=CUTOFF, horizon=horizon, built_at=datetime.now(UTC),
+        listing=LISTING, cutoff=CUTOFF, built_at=datetime.now(UTC),
         facts=tuple(facts), metrics=tuple(resolve_metric_ids(metrics)),
         announcements=tuple(announcements), shareholding=tuple(shareholding), bars=tuple(bars),
         coverage=(CoverageEntry(category="prices", status=Coverage.AVAILABLE),),

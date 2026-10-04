@@ -1,7 +1,7 @@
 from atrader.agents.state import AgentState
 from atrader.contracts import Mode
 
-DEBATE_DONE = "debate_done"
+DEBATERS = ["bull_researcher", "bear_researcher"]
 
 
 class ConditionalLogic:
@@ -18,9 +18,10 @@ class ConditionalLogic:
             return "finalize"
         return analyst_nodes
 
-    def should_continue_debate(self, state: AgentState) -> str:
-        """Bull and bear alternate until each has spoken `max_debate_rounds` times."""
-        turns = state.get("debate", [])
-        if len(turns) >= 2 * self.max_debate_rounds:
-            return DEBATE_DONE
-        return "bear_researcher" if turns[-1].side == "bull" else "bull_researcher"
+    def should_continue_debate(self, state: AgentState, after_debate: list[str]) -> list[str]:
+        """Bull and bear argue in parallel rounds until each has spoken
+        `max_debate_rounds` times."""
+        rounds_done = len(state.get("debate", [])) // 2
+        if rounds_done >= self.max_debate_rounds:
+            return after_debate
+        return DEBATERS

@@ -1,6 +1,6 @@
 from atrader.agents import context
 from atrader.agents.utils import analyst_report, ask, skipped_report
-from atrader.contracts import AnalystOutput
+from atrader.contracts import AnalystOutput, Pillar
 
 
 def create_fundamentals_analyst(llm):
@@ -19,7 +19,11 @@ quarterly results (exchange XBRL) and the ratios Python computed from them.
   as context only; different businesses are not directly comparable.
 - Ownership: the promoter and public holding trend across quarters.
 - Note the reporting basis, audit status, restatements and missing periods.
-Do not call a trend from a single quarter."""
+Do not call a trend from a single quarter.
+- Python also scored growth_quality and valuation (below, with the points each rule
+  added). Adjust either in score_adjustments only if the rules miss something the
+  evidence shows (for example a known seasonal quarter or a one-off item), by at most
+  15 points, with a reason and evidence IDs. Usually no adjustment is right."""
 
         evidence = context.join(
             context.company(pack),
@@ -27,8 +31,9 @@ Do not call a trend from a single quarter."""
             context.metrics(pack, "fundamental", title="Computed fundamentals"),
             context.metrics(pack, "valuation", "market", title="Valuation and market context"),
             context.shareholding(pack),
+            context.base_scores(state, Pillar.GROWTH_QUALITY, Pillar.VALUATION),
             context.coverage(pack),
-            "Write your analysis for the stated horizon.",
+            "Write your analysis.",
         )
         output, call_ids, error = ask(llm, "fundamentals_analyst", role, evidence, AnalystOutput)
         return analyst_report("fundamentals_analyst", pack, output, call_ids, error)

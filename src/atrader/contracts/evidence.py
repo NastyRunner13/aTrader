@@ -15,7 +15,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from atrader.contracts.common import Coverage, Horizon, StatementBasis
+from atrader.contracts.common import Coverage, StatementBasis
 from atrader.contracts.instruments import Listing
 
 
@@ -164,7 +164,6 @@ class EvidencePack(BaseModel):
 
     listing: Listing
     cutoff: date
-    horizon: Horizon
     built_at: datetime
     facts: tuple[FinancialFact, ...] = ()
     metrics: tuple[DerivedMetric, ...] = ()

@@ -1,26 +1,27 @@
 """Graph state shared by every agent.
 
-Analysts run in parallel, so each writes its own key in `analyst_reports` (merged by a
-reducer) instead of overwriting a shared field. Debate turns and risk reviews append.
+Agents in the same step run in parallel (the analysts; bull and bear in each debate
+round; the three risk reviewers), so each writes to a reducer instead of overwriting a
+shared field. The reducers keep a stable order whatever order the writes arrive in.
 """
 
 from __future__ import annotations
 
-import operator
 from typing import Annotated, TypedDict
 
 from atrader.contracts import (
     AgentReport,
-    Assessment,
     DebateTurn,
     EvidencePack,
-    JudgeVerdict,
+    PillarScore,
     ResearchRequest,
     RiskReview,
-    StrategyPlan,
+    Scorecard,
     Synthesis,
     Veto,
 )
+
+_PERSPECTIVES = ("aggressive", "conservative", "neutral")
 
 
 def merge_reports(left: dict[str, AgentReport] | None,
@@ -28,27 +29,33 @@ def merge_reports(left: dict[str, AgentReport] | None,
     return {**(left or {}), **(right or {})}
 
 
+def add_turns(left: list[DebateTurn] | None, right: list[DebateTurn] | None) -> list[DebateTurn]:
+    return sorted([*(left or []), *(right or [])], key=lambda t: t.turn_index)
+
+
+def add_reviews(left: list[RiskReview] | None, right: list[RiskReview] | None) -> list[RiskReview]:
+    return sorted([*(left or []), *(right or [])],
+                  key=lambda r: _PERSPECTIVES.index(r.perspective))
+
+
 class AgentState(TypedDict, total=False):
     run_id: str
     request: ResearchRequest
 
-    # data steward
+    # data steward (code)
     pack: EvidencePack | None
     vetoes: list[Veto]
+    base_scores: dict[str, PillarScore]  # keyed by pillar value
 
     # analyst team
     analyst_reports: Annotated[dict[str, AgentReport], merge_reports]
 
     # research team
-    debate: Annotated[list[DebateTurn], operator.add]
-    research_decision: JudgeVerdict | None  # research manager
-
-    # trader (hypothetical plan, never an order)
-    trader_plan: StrategyPlan | None
+    debate: Annotated[list[DebateTurn], add_turns]
 
     # risk team
-    risk_reviews: Annotated[list[RiskReview], operator.add]
+    risk_reviews: Annotated[list[RiskReview], add_reviews]
 
-    # portfolio manager + code-enforced vetoes
+    # portfolio manager, then the scorecard built in code
     final_synthesis: Synthesis | None
-    final_assessment: Assessment | None
+    scorecard: Scorecard | None

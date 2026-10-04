@@ -1,6 +1,6 @@
 from atrader.agents import context
 from atrader.agents.utils import ask
-from atrader.contracts import AgentStatus, Assessment, Synthesis, SynthesisOutput
+from atrader.contracts import AgentStatus, Synthesis, SynthesisOutput
 from atrader.verification import verify_reasons
 
 
@@ -9,40 +9,40 @@ def create_portfolio_manager(llm):
         pack = state["pack"]
 
         role = """\
-You are the portfolio manager. Write the final research conclusion for this company and
-horizon from the analysts' verified claims, the debate, and any research-manager, trader
-and risk reviews provided. If there are none, weigh the debate yourself and put the main
-risk constraints in key_risks.
-- assessment: supportive, mixed, adverse or insufficient_evidence. It describes what the
-  evidence says for the horizon; it is not a trade instruction or a probability.
-- top_reasons and key_risks: one sentence each, with evidence IDs.
-- strengthen_if / weaken_if / invalidate_if: observable future events.
-- unresolved: disagreements the evidence could not settle, and missing data.
+You are the portfolio manager. Code has already turned the analysts' work into a draft
+scorecard: a 0-100 score for each area, weighted into a 1-month, 6-month and 2-year
+score and signal. Explain it for a reader who wants the answer, not the whole analysis.
+- summary: two or three plain sentences a non-expert understands.
+- pros and cons: up to five each, one sentence with evidence IDs, most decision-relevant
+  first.
+- horizons: one note each for 1m, 6m and 2y: up to three drivers, and observable events
+  that would move the signal up (up_if) or down (down_if).
+- adjustment: you may move a horizon's score by up to 5 points when the debate or risk
+  reviews show the draft misses something material; give adjustment_reason. Usually 0.
+- unresolved: disagreements the evidence could not settle and missing data that matters.
 - Keep disagreement visible; do not average contradictions into false certainty.
-- Code applies the listed constraints after you answer. Write consistently with them."""
+- Code applies the listed constraints after you answer."""
 
         evidence = context.join(
             context.all_evidence(pack),
             context.analyst_reports(state),
             context.debate(state),
-            context.research_decision(state),
-            context.trader_plan(state),
             context.risk_reviews(state),
+            context.draft_scorecard(state),
             context.vetoes(state),
             "Write the final synthesis.",
         )
         output, call_ids, error = ask(llm, "portfolio_manager", role, evidence, SynthesisOutput)
         if output is None:
             return {"final_synthesis": Synthesis(
-                assessment=Assessment.INSUFFICIENT_EVIDENCE,
                 summary=f"Portfolio manager unavailable: {error}", status=AgentStatus.FAILED,
                 model_call_ids=call_ids)}
 
-        reasons, dropped = verify_reasons(output.top_reasons, pack)
-        risks, dropped_risks = verify_reasons(output.key_risks, pack)
+        pros, dropped = verify_reasons(output.pros, pack)
+        cons, dropped_cons = verify_reasons(output.cons, pack)
         synthesis = Synthesis(
-            **output.model_dump(exclude={"top_reasons", "key_risks"}),
-            top_reasons=reasons, key_risks=risks, dropped_reasons=dropped + dropped_risks,
+            **output.model_dump(exclude={"pros", "cons"}),
+            pros=pros, cons=cons, dropped_reasons=dropped + dropped_cons,
             model_call_ids=call_ids,
         )
         return {"final_synthesis": synthesis}
