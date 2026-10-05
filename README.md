@@ -40,6 +40,7 @@ uv run atrader research LT --mode compact
 | `atrader search "larsen"` | Find NSE symbols and ISINs |
 | `atrader models` | List free models the policy allows, and check the configured ones |
 | `atrader usage` / `atrader runs` | Today's request count / recent runs |
+| `atrader serve` | Start the local web API on `127.0.0.1:8000` (docs at `/v1/docs`) |
 
 ## How it works
 
@@ -72,6 +73,24 @@ finalize              code: the scorecard, signals, price ranges, vetoes
 - **Vetoes (code):** stale prices, short price history, old results and low liquidity hold every horizon at Neutral or below. Missing core data withholds the signal.
 - **Gateway:** only zero-priced `:free` routes are used. Up to 4 calls run at once. Each run has a hard call cap (8 compact, 14 full), and a daily allowance is enforced locally. Each invalid answer gets one repair attempt. When the quota runs out, the run is checkpointed so it can be resumed.
 
+## Web API
+
+`atrader serve` starts a FastAPI server for the web app. It listens on loopback only, answers only to `localhost` / `127.0.0.1`, and refuses state-changing requests from other origins. Interactive docs are at `http://127.0.0.1:8000/v1/docs`.
+
+| Endpoint | What it does |
+|---|---|
+| `GET /v1/status`, `/v1/usage` | Data freshness, model configuration, today's request allowance |
+| `GET /v1/instruments?query=` | Search NSE companies |
+| `GET /v1/instruments/{symbol}/bars` | Split-adjusted daily bars with 20/50/200 averages, for charts |
+| `POST /v1/runs` | Queue a run (one at a time). Refused with 409 when the key or allowance is missing |
+| `GET /v1/runs`, `/v1/runs/{id}` | Run state and stage progress |
+| `GET /v1/runs/{id}/events` | Live progress as server-sent events; reconnect with `Last-Event-ID` |
+| `POST /v1/runs/{id}/cancel`, `/resume` | Stop scheduling new work; continue from the checkpoint |
+| `GET /v1/reports`, `/v1/reports/{id}` | The archive, and one report (without the price series) |
+| `GET /v1/reports/{id}/evidence/{eid}` | The filing, metric or headline behind a cited ID |
+| `GET /v1/reports/{id}/export?format=card\|details\|json` | Download a report |
+| `GET`, `PUT`, `DELETE /v1/watchlist` | Followed companies with their last close and latest signals |
+
 ## Code layout
 
 The agents follow TradingAgents' layout: one file per agent, each with a `create_<agent>(llm)` factory that returns a graph node.
@@ -95,6 +114,7 @@ src/atrader/
   llm/             free-only OpenRouter gateway, policy, usage ledger, fake gateway
   verification/    claim, citation, score-adjustment and event checks
   report/          signal card, full-analysis Markdown and JSON
+  api/             FastAPI app: search, bars, runs (queue, events, cancel), reports, watchlist
 ```
 
 Run the tests with `uv run pytest` and lint with `uv run ruff check src tests`. Tests are offline and use synthetic data.

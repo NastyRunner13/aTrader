@@ -8,7 +8,9 @@ import sys
 from datetime import date
 
 import typer
+import uvicorn
 
+from atrader.api.app import create_app
 from atrader.config import get_settings
 from atrader.contracts import Mode
 from atrader.data.http import PoliteClient
@@ -83,6 +85,17 @@ def ingest(sessions: int = typer.Option(320, help="Weekdays of history to downlo
                f"holidays {result.holidays}, already present {result.already_present}")
     for failure in result.failed or []:
         typer.secho(f"  failed {failure}", fg="yellow")
+
+
+@app.command()
+def serve(
+    host: str = typer.Option(None, help="Interface to listen on (default 127.0.0.1)"),
+    port: int = typer.Option(None, help="Port (default 8000)"),
+) -> None:
+    """Start the web API that the aTrader web app talks to."""
+    settings = get_settings()
+    uvicorn.run(create_app(settings), host=host or settings.api_host,
+                port=port or settings.api_port, log_level="info")
 
 
 @app.command()

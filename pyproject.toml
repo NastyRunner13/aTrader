@@ -16,6 +16,8 @@ dependencies = [
     "typer>=0.27,<1",
     "platformdirs>=4.12,<5",
     "defusedxml>=0.7,<1",
+    "fastapi>=0.142.2",
+    "uvicorn>=0.54.0",
 ]
 
 [project.scripts]

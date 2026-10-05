@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable
-from contextlib import ExitStack
+from contextlib import ExitStack, closing
 from datetime import date
 
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -46,6 +46,12 @@ class RunPaused(RuntimeError):
         self.run_id = run_id
 
 
+class RunCancelled(RuntimeError):
+    def __init__(self, run_id: str) -> None:
+        super().__init__(f"run {run_id} cancelled")
+        self.run_id = run_id
+
+
 class ResearchGraph:
     def __init__(
         self,
@@ -55,6 +61,8 @@ class ResearchGraph:
         evidence_source: EvidenceSource | None = None,
         selected_analysts: tuple[str, ...] = ("market", "fundamentals", "news"),
         on_progress: Callable[[str], None] | None = None,
+        on_event: Callable[[dict[str, str]], None] | None = None,
+        should_cancel: Callable[[], bool] | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         self.settings.ensure_dirs()
@@ -62,13 +70,14 @@ class ResearchGraph:
         self.selected_analysts = selected_analysts
         self._evidence_source = evidence_source
         self._on_progress = on_progress
+        self._on_event = on_event  # one {"node", "phase"} event as each graph node starts/ends
+        self._should_cancel = should_cancel  # checked between nodes; stops new work, not calls
         self._runs = RunRegistry(self.settings.db_path)
 
-    def run(self, symbol: str, *, mode: Mode = Mode.COMPACT,
-            cutoff: date | None = None) -> ResearchReport:
+    def run(self, symbol: str, *, mode: Mode = Mode.COMPACT, cutoff: date | None = None,
+            run_id: str | None = None) -> ResearchReport:
         request = ResearchRequest(symbol=symbol, mode=mode, cutoff=cutoff)
-        run_id = uuid.uuid4().hex
-        return self._execute(run_id, request, self.dry_run, new=True)
+        return self._execute(run_id or uuid.uuid4().hex, request, self.dry_run, new=True)
 
     def resume(self, run_id: str) -> ResearchReport:
         request, dry_run, _ = self._runs.get(run_id)
@@ -80,7 +89,7 @@ class ResearchGraph:
                  new: bool) -> ResearchReport:
         with ExitStack() as stack:
             gateway = self._gateway(run_id, request.mode, dry_run, stack)
-            if new:
+            if new and not self._runs.exists(run_id):  # the API registers a run when queued
                 self._runs.create(run_id, request, dry_run)
             setup = GraphSetup(
                 quick_llm=LLM(gateway, "quick"),
@@ -97,18 +106,33 @@ class ResearchGraph:
 
             self._runs.set_status(run_id, RunStatus.RUNNING)
             try:
-                state = graph.invoke(inputs, config)
+                self._stream(graph, inputs, config, run_id)
+                state = graph.get_state(config).values
             except QuotaExhausted as exc:
-                self._runs.set_status(run_id, RunStatus.PAUSED_QUOTA)
+                self._runs.set_status(run_id, RunStatus.PAUSED_QUOTA, detail=str(exc))
                 raise RunPaused(run_id, str(exc)) from exc
-            except BaseException:
-                self._runs.set_status(run_id, RunStatus.FAILED)
+            except RunCancelled:
+                self._runs.set_status(run_id, RunStatus.CANCELLED)
+                raise
+            except BaseException as exc:
+                self._runs.set_status(run_id, RunStatus.FAILED, detail=str(exc))
                 raise
             report = build_report(run_id, request, state, gateway.calls())
 
         card_path, *_ = write_report(report, self.settings.reports_dir)
         self._runs.set_status(run_id, report.status, card_path)
         return report
+
+    def _stream(self, graph, inputs, config, run_id: str) -> None:  # type: ignore[no-untyped-def]
+        """Run the graph to its end, reporting each node as it starts and finishes."""
+        with closing(graph.stream(inputs, config, stream_mode="tasks")) as events:
+            for event in events:
+                if self._on_event is not None:
+                    phase = "start" if "triggers" in event else (
+                        "error" if event.get("error") else "done")
+                    self._on_event({"node": event["name"], "phase": phase})
+                if self._should_cancel is not None and self._should_cancel():
+                    raise RunCancelled(run_id)
 
     def _gateway(self, run_id: str, mode: Mode, dry_run: bool, stack: ExitStack) -> LLMGateway:
         cap = MODES[mode]["max_calls"]

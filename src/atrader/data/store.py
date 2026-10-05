@@ -159,6 +159,12 @@ class MarketStore:
         ]
         return list(reversed(bars))
 
+    def latest_session(self) -> date | None:
+        """The newest session with stored equity prices, or None before the first ingest."""
+        with self._connect() as conn:
+            (latest,) = conn.execute("SELECT MAX(session) FROM price_bars").fetchone()
+        return date.fromisoformat(latest) if latest else None
+
     def upsert_delivery(self, rows: Iterable[DeliveryRow]) -> int:
         payload = [(r.symbol, r.series, r.session.isoformat(), r.traded_qty, r.delivered_qty,
                     r.delivery_pct) for r in rows]

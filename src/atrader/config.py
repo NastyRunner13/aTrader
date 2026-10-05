@@ -52,6 +52,16 @@ class Settings(BaseSettings):
     data_dir: Path = Field(default_factory=lambda: Path(user_data_dir("atrader", appauthor=False)))
     reports_dir: Path = Path("reports")
 
+    # --- Web API (`atrader serve`) ---------------------------------------------------------
+    # Loopback only by default. Requests must carry one of these Host names, and a
+    # state-changing request that names an Origin must use one of `web_origins`.
+    api_host: str = "127.0.0.1"
+    api_port: int = 8000
+    api_hosts: list[str] = Field(default_factory=lambda: ["localhost", "127.0.0.1"])
+    web_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"])
+    max_queued_runs: int = 5
+
     # --- Data retrieval ------------------------------------------------------------------
     http_min_interval_s: float = 1.0
     price_history_sessions: int = 300
