@@ -15,7 +15,8 @@ export function RunsView() {
   const router = useRouter();
   const { launchRun } = useShell();
   const runs = useApi<Run[]>("/v1/runs?limit=50", {
-    refreshInterval: (data) => (data?.some((run) => isActive(run.status)) ? 3000 : 0),
+    refreshInterval: (data) =>
+      data?.some((run) => isActive(run.status)) ? 3000 : 0,
   });
 
   return (
@@ -23,12 +24,17 @@ export function RunsView() {
       <PageTitle
         title="Run history"
         aside={
-          <button type="button" className="btn btn-primary" onClick={() => launchRun()}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => launchRun()}
+          >
             <Sparkles size={15} aria-hidden /> Research
           </button>
         }
       >
-        Every research run, newest first. One runs at a time; the rest wait their turn.
+        Every research run, newest first. One runs at a time; the rest wait
+        their turn.
       </PageTitle>
 
       <div className="mt-8">
@@ -41,11 +47,23 @@ export function RunsView() {
             ))}
           </div>
         ) : runs.data.length === 0 ? (
-          <EmptyState title="No runs yet" action={<button type="button" className="btn btn-primary" onClick={() => launchRun()}>Research a company</button>}>
-            Research a company to see its run here, with live progress while it works.
+          <EmptyState
+            title="No runs yet"
+            action={
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => launchRun()}
+              >
+                Research a company
+              </button>
+            }
+          >
+            Research a company to see its run here, with live progress while it
+            works.
           </EmptyState>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="panel overflow-x-auto">
             <table className="tbl min-w-[40rem]">
               <thead>
                 <tr>
@@ -62,12 +80,25 @@ export function RunsView() {
                 {runs.data.map((run) => {
                   const href = `/runs/${run.run_id}`;
                   return (
-                    <tr key={run.run_id} data-link className="cursor-pointer" onClick={() => router.push(href)}>
+                    <tr
+                      key={run.run_id}
+                      data-link
+                      className="cursor-pointer"
+                      onClick={() => router.push(href)}
+                    >
                       <td>
-                        <Link href={href} className="font-semibold no-underline hover:underline" onClick={(event) => event.stopPropagation()}>
+                        <Link
+                          href={href}
+                          className="font-semibold no-underline hover:underline"
+                          onClick={(event) => event.stopPropagation()}
+                        >
                           {run.request.symbol}
                         </Link>
-                        {run.request.cutoff && <span className="meta ml-2">cutoff {run.request.cutoff}</span>}
+                        {run.request.cutoff && (
+                          <span className="meta ml-2">
+                            cutoff {run.request.cutoff}
+                          </span>
+                        )}
                       </td>
                       <td className="whitespace-nowrap text-ink-2">
                         {MODE_LABEL[run.request.mode]}
@@ -80,14 +111,22 @@ export function RunsView() {
                       <td>
                         <RunStatusBadge status={run.status} />
                       </td>
-                      <td className="whitespace-nowrap text-ink-2">{ago(run.created_at)}</td>
+                      <td className="whitespace-nowrap text-ink-2">
+                        {ago(run.created_at)}
+                      </td>
                       <td className="r whitespace-nowrap">
                         {run.report_id ? (
-                          <Link href={`/reports/${encodeURIComponent(run.report_id)}`} className="font-medium text-accent underline-offset-2 hover:underline" onClick={(event) => event.stopPropagation()}>
+                          <Link
+                            href={`/reports/${encodeURIComponent(run.report_id)}`}
+                            className="font-medium text-accent underline-offset-2 hover:underline"
+                            onClick={(event) => event.stopPropagation()}
+                          >
                             Open report
                           </Link>
                         ) : (
-                          <span className="text-ink-3">{run.detail ? "See details" : "—"}</span>
+                          <span className="text-ink-3">
+                            {run.detail ? "See details" : "—"}
+                          </span>
                         )}
                       </td>
                     </tr>

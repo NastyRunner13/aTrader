@@ -8,7 +8,10 @@ export const metadata: Metadata = {
   description: "Evidence-linked research on NSE-listed companies.",
 };
 
-export const viewport: Viewport = { themeColor: "#ffffff", colorScheme: "light" };
+export const viewport: Viewport = {
+  themeColor: "#0b0c0e",
+  colorScheme: "dark",
+};
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

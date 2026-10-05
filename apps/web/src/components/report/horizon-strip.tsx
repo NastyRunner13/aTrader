@@ -7,17 +7,27 @@ import { ScoreTrack, SignalChip } from "../signal";
 /** Three horizons side by side: signal, score on its band track, range, and what drives it. */
 export function HorizonStrip({ card }: { card: Scorecard }) {
   return (
-    <section aria-label="Signals by horizon" className="grid divide-line overflow-hidden rounded-lg border border-line md:grid-cols-3 md:divide-x max-md:divide-y">
+    <section
+      aria-label="Signals by horizon"
+      className="horizon-strip grid divide-line overflow-hidden rounded-lg border border-line md:grid-cols-3 md:divide-x max-md:divide-y"
+    >
       {card.horizons.map((view) => {
         const range = rangeText(view.price_range);
         const headingId = `horizon-${view.horizon}`;
         return (
-          <div key={view.horizon} className="px-5 pb-5 pt-4" role="group" aria-labelledby={headingId}>
+          <div
+            key={view.horizon}
+            className="px-5 pb-5 pt-4"
+            role="group"
+            aria-labelledby={headingId}
+          >
             <div className="flex items-baseline justify-between gap-3">
               <h3 id={headingId} className="font-semibold">
                 {HORIZON_LABEL[view.horizon]}
               </h3>
-              <span className="meta">{sentence(view.confidence)} confidence</span>
+              <span className="meta">
+                {sentence(view.confidence)} confidence
+              </span>
             </div>
 
             <div className="mt-4 flex items-end justify-between gap-3">
@@ -41,7 +51,8 @@ export function HorizonStrip({ card }: { card: Scorecard }) {
                 <div>
                   <dt className="meta">Why there is no signal</dt>
                   <dd className="text-ink-2">
-                    {view.weight_covered}% of this horizon’s weight had a score; at least 60% is needed, or a constraint blocked it.
+                    {view.weight_covered}% of this horizon’s weight had a score;
+                    at least 60% is needed, or a constraint blocked it.
                   </dd>
                 </div>
               )}
@@ -60,7 +71,9 @@ export function HorizonStrip({ card }: { card: Scorecard }) {
               {view.capped_by.length > 0 && (
                 <div>
                   <dt className="meta">Held at Neutral by</dt>
-                  <dd className="text-warn-ink">{view.capped_by.join(", ").replaceAll("_", " ")}</dd>
+                  <dd className="text-warn-ink">
+                    {view.capped_by.join(", ").replaceAll("_", " ")}
+                  </dd>
                 </div>
               )}
             </dl>

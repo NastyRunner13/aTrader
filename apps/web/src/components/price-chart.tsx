@@ -26,11 +26,16 @@ const RANGES = [
   { label: "2Y", sessions: 500 },
 ] as const;
 
-const LINE_KINDS: Partial<Record<Level["kind"], string>> = { resistance: "R", support: "S" };
+const LINE_KINDS: Partial<Record<Level["kind"], string>> = {
+  resistance: "R",
+  support: "S",
+};
 
 /** A design token as rgb(): the chart library cannot read oklch(), the browser can. */
 function token(name: string): string {
-  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue(name)
+    .trim();
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = 1;
   const context = canvas.getContext("2d", { willReadFrequently: true });
@@ -49,7 +54,15 @@ type Series = {
   lines: IPriceLine[];
 };
 
-type Readout = { session: string; open: number; high: number; low: number; close: number; volume?: number; delivery?: number | null };
+type Readout = {
+  session: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+  delivery?: number | null;
+};
 
 const AVERAGES = [
   { key: "sma20", label: "20", color: "--color-accent" },
@@ -63,23 +76,37 @@ export function PriceChart({
   close,
   height = 360,
   initialSessions = 250,
+  compact = false,
 }: {
   symbol: string;
   levels?: Level[];
   close?: number;
   height?: number;
   initialSessions?: number;
+  compact?: boolean;
 }) {
   const [sessions, setSessions] = useState(initialSessions);
-  const [show, setShow] = useState({ levels: true, volume: true, sma20: false, sma50: true, sma200: true });
+  const [show, setShow] = useState({
+    levels: !compact,
+    volume: !compact,
+    sma20: false,
+    sma50: !compact,
+    sma200: !compact,
+  });
   const [hover, setHover] = useState<Readout | null>(null);
   const container = useRef<HTMLDivElement>(null);
   const series = useRef<Series | null>(null);
-  const { data, error, isLoading } = useApi<Bars>(`/v1/instruments/${encodeURIComponent(symbol)}/bars?sessions=${sessions}`, {
-    keepPreviousData: true, // changing the range updates the series; it does not rebuild the chart
-  });
+  const { data, error, isLoading } = useApi<Bars>(
+    `/v1/instruments/${encodeURIComponent(symbol)}/bars?sessions=${sessions}`,
+    {
+      keepPreviousData: true, // changing the range updates the series; it does not rebuild the chart
+    },
+  );
 
-  const byDate = useMemo(() => new Map((data?.bars ?? []).map((bar) => [bar.session, bar])), [data]);
+  const byDate = useMemo(
+    () => new Map((data?.bars ?? []).map((bar) => [bar.session, bar])),
+    [data],
+  );
   const byDateRef = useRef(byDate);
   byDateRef.current = byDate;
   const last = data?.bars.at(-1);
@@ -88,7 +115,7 @@ export function PriceChart({
   useEffect(() => {
     const element = container.current;
     if (!element || !data) return;
-    const ink = token("--color-ink");
+    const ink = token("--color-wash-2");
     const chart = createChart(element, {
       autoSize: true,
       layout: {
@@ -97,23 +124,38 @@ export function PriceChart({
         fontFamily: "Geist Variable, ui-sans-serif, system-ui, sans-serif",
         fontSize: 12,
       },
-      grid: { vertLines: { visible: false }, horzLines: { color: token("--color-line") } },
-      rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.06, bottom: 0.2 } },
+      grid: {
+        vertLines: { visible: false },
+        horzLines: { color: token("--color-line") },
+      },
+      rightPriceScale: {
+        borderVisible: false,
+        scaleMargins: { top: 0.06, bottom: 0.2 },
+      },
       timeScale: { borderVisible: false, rightOffset: 4, timeVisible: false },
       crosshair: {
         mode: CrosshairMode.Magnet,
-        vertLine: { color: token("--color-line-strong"), labelBackgroundColor: ink },
-        horzLine: { color: token("--color-line-strong"), labelBackgroundColor: ink },
+        vertLine: {
+          color: token("--color-line-strong"),
+          labelBackgroundColor: ink,
+        },
+        horzLine: {
+          color: token("--color-line-strong"),
+          labelBackgroundColor: ink,
+        },
       },
-      localization: { priceFormatter: (price: number) => price.toLocaleString("en-IN", { maximumFractionDigits: 2 }) },
+      localization: {
+        priceFormatter: (price: number) =>
+          price.toLocaleString("en-IN", { maximumFractionDigits: 2 }),
+      },
     });
     const candles = chart.addSeries(CandlestickSeries, {
-      upColor: token("--color-bg"),
-      borderUpColor: ink,
-      wickUpColor: ink,
-      downColor: ink,
-      borderDownColor: ink,
-      wickDownColor: ink,
+      upColor: token("--color-bull-solid"),
+      borderUpColor: token("--color-bull-solid"),
+      wickUpColor: token("--color-bull-solid"),
+      downColor: token("--color-bear-solid"),
+      borderDownColor: token("--color-bear-solid"),
+      wickDownColor: token("--color-bear-solid"),
       priceLineVisible: false,
     });
     const volume = chart.addSeries(HistogramSeries, {
@@ -122,7 +164,9 @@ export function PriceChart({
       lastValueVisible: false,
       priceLineVisible: false,
     });
-    chart.priceScale("volume").applyOptions({ scaleMargins: { top: 0.84, bottom: 0 } });
+    chart
+      .priceScale("volume")
+      .applyOptions({ scaleMargins: { top: 0.84, bottom: 0 } });
     const sma: Record<string, ISeriesApi<"Line">> = {};
     for (const { key, color } of AVERAGES) {
       sma[key] = chart.addSeries(LineSeries, {
@@ -134,8 +178,22 @@ export function PriceChart({
       });
     }
     chart.subscribeCrosshairMove((param) => {
-      const bar = param.time ? byDateRef.current.get(String(param.time)) : undefined;
-      setHover(bar ? { session: bar.session, open: bar.open, high: bar.high, low: bar.low, close: bar.close, volume: bar.volume, delivery: bar.delivery_pct } : null);
+      const bar = param.time
+        ? byDateRef.current.get(String(param.time))
+        : undefined;
+      setHover(
+        bar
+          ? {
+              session: bar.session,
+              open: bar.open,
+              high: bar.high,
+              low: bar.low,
+              close: bar.close,
+              volume: bar.volume,
+              delivery: bar.delivery_pct,
+            }
+          : null,
+      );
     });
     series.current = { chart, candles, volume, sma, lines: [] };
     return () => {
@@ -150,13 +208,33 @@ export function PriceChart({
   useEffect(() => {
     const s = series.current;
     if (!s || !data) return;
-    s.candles.setData(data.bars.map((b) => ({ time: b.session, open: b.open, high: b.high, low: b.low, close: b.close })));
+    s.candles.setData(
+      data.bars.map((b) => ({
+        time: b.session,
+        open: b.open,
+        high: b.high,
+        low: b.low,
+        close: b.close,
+      })),
+    );
     const up = token("--color-line-strong");
     const down = token("--color-ink-3");
-    s.volume.setData(data.bars.map((b) => ({ time: b.session, value: b.volume, color: b.close >= b.open ? up : down })));
+    s.volume.setData(
+      data.bars.map((b) => ({
+        time: b.session,
+        value: b.volume,
+        color: b.close >= b.open ? up : down,
+      })),
+    );
     for (const { key } of AVERAGES) {
       const values = data.averages[key] ?? [];
-      s.sma[key]?.setData(data.bars.flatMap((b, i) => (values[i] == null ? [] : [{ time: b.session, value: values[i] as number }])));
+      s.sma[key]?.setData(
+        data.bars.flatMap((b, i) =>
+          values[i] == null
+            ? []
+            : [{ time: b.session, value: values[i] as number }],
+        ),
+      );
     }
     s.chart.timeScale().fitContent();
   }, [data]);
@@ -166,7 +244,8 @@ export function PriceChart({
     const s = series.current;
     if (!s) return;
     s.volume.applyOptions({ visible: show.volume });
-    for (const { key } of AVERAGES) s.sma[key]?.applyOptions({ visible: show[key] });
+    for (const { key } of AVERAGES)
+      s.sma[key]?.applyOptions({ visible: show[key] });
   }, [show, data]);
 
   // Level lines: the two nearest resistances above and supports below the last close. The
@@ -182,7 +261,10 @@ export function PriceChart({
     const nearest = (kind: Level["kind"]) =>
       levels
         .filter((l) => l.kind === kind)
-        .sort((a, b) => Math.abs(a.price - reference) - Math.abs(b.price - reference))
+        .sort(
+          (a, b) =>
+            Math.abs(a.price - reference) - Math.abs(b.price - reference),
+        )
         .slice(0, 2);
     const drawn = [...nearest("resistance"), ...nearest("support")];
     s.lines = drawn.map((level) =>
@@ -201,39 +283,72 @@ export function PriceChart({
     return error.code === "no_prices" ? (
       <div className="rounded-lg border border-dashed border-line-strong p-6">
         <p className="font-medium">No price history stored for {symbol} yet.</p>
-        <p className="meta mt-1">Download NSE prices once, then reload this page.</p>
+        <p className="meta mt-1">
+          Download NSE prices once, then reload this page.
+        </p>
         <CopyCommand command="uv run atrader ingest" />
       </div>
     ) : (
       <div className="rounded-lg border border-line p-6" role="alert">
         <p className="font-medium">The chart could not load.</p>
-        <p className="meta mt-1">{error instanceof ApiError ? error.message : "Unknown error."}</p>
+        <p className="meta mt-1">
+          {error instanceof ApiError ? error.message : "Unknown error."}
+        </p>
       </div>
     );
   }
 
-  const shown = hover ?? (last ? { session: last.session, open: last.open, high: last.high, low: last.low, close: last.close, volume: last.volume, delivery: last.delivery_pct } : null);
+  const shown =
+    hover ??
+    (last
+      ? {
+          session: last.session,
+          open: last.open,
+          high: last.high,
+          low: last.low,
+          close: last.close,
+          volume: last.volume,
+          delivery: last.delivery_pct,
+        }
+      : null);
 
   return (
     <figure>
       <figcaption className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <div className="min-h-9 num text-xs text-ink-2" aria-live="off">
+        <div
+          className={compact ? "hidden" : "min-h-9 num text-xs text-ink-2"}
+          aria-live="off"
+        >
           {shown ? (
             <>
-              <span className="font-medium text-ink">{dateOnly(shown.session)}</span>
+              <span className="font-medium text-ink">
+                {dateOnly(shown.session)}
+              </span>
               <span className="ml-3">O {rupees(shown.open)}</span>
               <span className="ml-2">H {rupees(shown.high)}</span>
               <span className="ml-2">L {rupees(shown.low)}</span>
               <span className="ml-2">C {rupees(shown.close)}</span>
-              {shown.volume != null && <span className="ml-3 text-ink-3">Vol {count(shown.volume)}</span>}
-              {shown.delivery != null && <span className="ml-2 text-ink-3">Deliv. {shown.delivery}%</span>}
+              {shown.volume != null && (
+                <span className="ml-3 text-ink-3">
+                  Vol {count(shown.volume)}
+                </span>
+              )}
+              {shown.delivery != null && (
+                <span className="ml-2 text-ink-3">
+                  Deliv. {shown.delivery}%
+                </span>
+              )}
             </>
           ) : (
             <span className="text-ink-3">&nbsp;</span>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
-          <div role="group" aria-label="Chart range" className="flex rounded-md border border-line p-0.5">
+          <div
+            role="group"
+            aria-label="Chart range"
+            className="flex rounded-md border border-line p-0.5"
+          >
             {RANGES.map((range) => (
               <button
                 key={range.label}
@@ -241,22 +356,44 @@ export function PriceChart({
                 className="btn btn-quiet btn-sm !min-h-6 !px-2"
                 aria-pressed={sessions === range.sessions}
                 data-active={sessions === range.sessions}
-                style={sessions === range.sessions ? { background: "var(--color-wash-2)", color: "var(--color-ink)" } : undefined}
+                style={
+                  sessions === range.sessions
+                    ? {
+                        background: "var(--color-wash-2)",
+                        color: "var(--color-ink)",
+                      }
+                    : undefined
+                }
                 onClick={() => setSessions(range.sessions)}
               >
                 {range.label}
               </button>
             ))}
           </div>
-          <div role="group" aria-label="Chart layers" className="flex flex-wrap gap-1.5">
-            <Toggle on={show.levels} onChange={(on) => setShow((s) => ({ ...s, levels: on }))}>
+          <div
+            role="group"
+            aria-label="Chart layers"
+            className={compact ? "hidden" : "flex flex-wrap gap-1.5"}
+          >
+            <Toggle
+              on={show.levels}
+              onChange={(on) => setShow((s) => ({ ...s, levels: on }))}
+            >
               Levels
             </Toggle>
-            <Toggle on={show.volume} onChange={(on) => setShow((s) => ({ ...s, volume: on }))}>
+            <Toggle
+              on={show.volume}
+              onChange={(on) => setShow((s) => ({ ...s, volume: on }))}
+            >
               Volume
             </Toggle>
             {AVERAGES.map(({ key, label, color }) => (
-              <Toggle key={key} on={show[key]} onChange={(on) => setShow((s) => ({ ...s, [key]: on }))} swatch={`var(${color})`}>
+              <Toggle
+                key={key}
+                on={show[key]}
+                onChange={(on) => setShow((s) => ({ ...s, [key]: on }))}
+                swatch={`var(${color})`}
+              >
                 {label}
               </Toggle>
             ))}
@@ -266,21 +403,53 @@ export function PriceChart({
 
       <div className="relative mt-1" style={{ height }}>
         {isLoading && <div className="skeleton absolute inset-0" aria-hidden />}
-        <div ref={container} className="absolute inset-0" role="img" aria-label={`Candlestick chart of ${symbol} daily prices${last ? `, last close ${rupees(last.close)}` : ""}`} />
+        <div
+          ref={container}
+          className="absolute inset-0"
+          role="img"
+          aria-label={`Candlestick chart of ${symbol} daily prices${last ? `, last close ${rupees(last.close)}` : ""}`}
+        />
       </div>
       {data?.adjusted && (
         <p className="meta mt-2">
-          Prices before {dateOnly(data.adjustments.at(-1)?.session)} are adjusted for a split or bonus.
+          Prices before {dateOnly(data.adjustments.at(-1)?.session)} are
+          adjusted for a split or bonus.
         </p>
       )}
     </figure>
   );
 }
 
-function Toggle({ on, onChange, swatch, children }: { on: boolean; onChange: (on: boolean) => void; swatch?: string; children: React.ReactNode }) {
+function Toggle({
+  on,
+  onChange,
+  swatch,
+  children,
+}: {
+  on: boolean;
+  onChange: (on: boolean) => void;
+  swatch?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <button type="button" className="btn btn-sm" aria-pressed={on} onClick={() => onChange(!on)} style={on ? { background: "var(--color-wash-2)" } : { color: "var(--color-ink-3)" }}>
-      {swatch && <span className="inline-block h-0.5 w-3 rounded-full" style={{ background: swatch, opacity: on ? 1 : 0.35 }} aria-hidden />}
+    <button
+      type="button"
+      className="btn btn-sm"
+      aria-pressed={on}
+      onClick={() => onChange(!on)}
+      style={
+        on
+          ? { background: "var(--color-wash-2)" }
+          : { color: "var(--color-ink-3)" }
+      }
+    >
+      {swatch && (
+        <span
+          className="inline-block h-0.5 w-3 rounded-full"
+          style={{ background: swatch, opacity: on ? 1 : 0.35 }}
+          aria-hidden
+        />
+      )}
       {children}
     </button>
   );
