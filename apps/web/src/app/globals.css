@@ -426,7 +426,7 @@
     padding: 0.7rem 0.75rem;
     border-bottom: 1px solid var(--color-line);
     vertical-align: middle;
-    overflow-wrap: anywhere; /* a long source URL or error must not widen the page */
+    overflow-wrap: break-word;
   }
 
   .tbl tbody tr[data-link]:hover td {
@@ -435,6 +435,11 @@
 
   .tbl .r {
     text-align: right;
+  }
+
+  /* Numbers and prices never break across lines. */
+  .tbl td.r {
+    white-space: nowrap;
   }
 
   /* --- navigation ------------------------------------------------------------------- */

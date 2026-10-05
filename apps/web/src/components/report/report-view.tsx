@@ -7,7 +7,7 @@ import { dateOnly, MODE_LABEL, stamp } from "@/lib/format";
 import { EXPERIMENTAL } from "@/lib/report";
 import { STATUS_LABEL } from "@/lib/signal";
 import type { Report, ReportSummary } from "@/lib/types";
-import { EvidenceProvider } from "../evidence";
+import { Cited, EvidenceProvider } from "../evidence";
 import { FollowButton } from "../follow-button";
 import { PriceChart } from "../price-chart";
 import { useShell } from "../shell";
@@ -112,7 +112,11 @@ export function ReportView({ report, dryRun = false, history = [] }: { report: R
           <HorizonStrip card={card} />
           <p className="meta -mt-3">{EXPERIMENTAL}</p>
 
-          {summary && <p className="display max-w-[60ch] text-lg text-ink-2 [text-wrap:pretty]">{summary}</p>}
+          {summary && (
+            <p className="display max-w-[60ch] text-lg text-ink-2 [text-wrap:pretty]">
+              <Cited text={summary} />
+            </p>
+          )}
 
           <div className="grid gap-12 xl:grid-cols-[minmax(0,1fr)_30rem]">
             <div className="min-w-0 space-y-12">

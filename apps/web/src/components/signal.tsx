@@ -37,30 +37,33 @@ export function ScoreTrack({
 }) {
   const label = score == null ? "No score" : `Score ${score} of 100, ${SIGNAL_LABEL[signal]}`;
   return (
-    <div role="img" aria-label={label} className="relative">
-      <div className="flex h-1.5 overflow-hidden rounded-full">
-        {BANDS.map((band) => {
-          const active = score != null && score >= band.from && score <= band.to;
-          return (
-            <span
-              key={band.signal}
-              style={{
-                flexGrow: band.to - band.from + 1,
-                background: active ? SIGNAL_BAND_TINT[band.signal] : "var(--color-wash-2)",
-                boxShadow: "inset -2px 0 0 var(--color-bg)",
-              }}
-            />
-          );
-        })}
+    <div role="img" aria-label={label}>
+      {/* The pin is centred on the bar alone, never on the tick labels below it. */}
+      <div className="relative">
+        <div className="flex h-1.5 overflow-hidden rounded-full">
+          {BANDS.map((band) => {
+            const active = score != null && score >= band.from && score <= band.to;
+            return (
+              <span
+                key={band.signal}
+                style={{
+                  flexGrow: band.to - band.from + 1,
+                  background: active ? SIGNAL_BAND_TINT[band.signal] : "var(--color-wash-2)",
+                  boxShadow: "inset -2px 0 0 var(--color-bg)",
+                }}
+              />
+            );
+          })}
+        </div>
+        {score != null && (
+          <span
+            className="absolute top-1/2 h-3.5 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-ink ring-2 ring-bg"
+            style={{ left: `${Math.min(100, Math.max(0, score))}%` }}
+          />
+        )}
       </div>
-      {score != null && (
-        <span
-          className="absolute top-1/2 h-3.5 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-ink ring-2 ring-bg"
-          style={{ left: `${Math.min(100, Math.max(0, score))}%` }}
-        />
-      )}
       {ticks && (
-        <div className="relative mt-1.5 h-4 text-2xs text-ink-3 num" aria-hidden>
+        <div className="relative mt-2.5 h-4 text-2xs text-ink-3 num" aria-hidden>
           {[30, 45, 56, 71].map((tick) => (
             <span key={tick} className="absolute -translate-x-1/2" style={{ left: `${tick}%` }}>
               {tick}

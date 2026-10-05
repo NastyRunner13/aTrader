@@ -154,7 +154,8 @@ export function WatchlistView() {
           </EmptyState>
         ) : (
           <section aria-label="Followed companies">
-            <div className="overflow-x-auto">
+            {/* relative: so the hidden "Remove" column label is clipped with the table */}
+            <div className="relative overflow-x-auto">
               <table className="tbl min-w-[44rem]">
                 <thead>
                   <tr>

@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import { flipText, rangeText } from "@/lib/report";
 import { HORIZON_LABEL, HORIZON_SHORT, PILLAR_LABEL } from "@/lib/signal";
 import type { Horizon, Scorecard } from "@/lib/types";
+import { Cited } from "../evidence";
 import { SignalChip } from "../signal";
 
 function Bullets({ title, items }: { title: string; items: string[] }) {
@@ -13,7 +14,9 @@ function Bullets({ title, items }: { title: string; items: string[] }) {
       <h4 className="font-semibold">{title}</h4>
       <ul className="mt-1.5 list-disc space-y-1 pl-5 text-ink-2 marker:text-ink-3">
         {items.map((item) => (
-          <li key={item}>{item}</li>
+          <li key={item}>
+            <Cited text={item} />
+          </li>
         ))}
       </ul>
     </div>

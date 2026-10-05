@@ -46,7 +46,11 @@ function Analyst({ report }: { report: AgentReport }) {
         {report.status !== "completed" && <Badge tone={report.status === "skipped" ? undefined : "warn"}>{sentence(report.status)}</Badge>}
       </p>
       {report.error && <p className="meta mt-1">{report.error}</p>}
-      {report.summary && <p className="prose-body mt-1.5 !text-sm">{report.summary}</p>}
+      {report.summary && (
+        <p className="prose-body mt-1.5 !text-sm">
+          <Cited text={report.summary} />
+        </p>
+      )}
       <div className="mt-3">
         <ClaimList claims={report.claims} />
       </div>
@@ -66,7 +70,11 @@ function Turn({ turn }: { turn: DebateTurn }) {
         </span>
         {turn.status !== "completed" && <Badge tone="warn">{sentence(turn.status)}</Badge>}
       </p>
-      {turn.thesis && <p className="prose-body mt-1.5 !text-sm">{turn.thesis}</p>}
+      {turn.thesis && (
+        <p className="prose-body mt-1.5 !text-sm">
+          <Cited text={turn.thesis} />
+        </p>
+      )}
       <div className="mt-3">
         <ClaimList claims={turn.claims} />
       </div>
@@ -166,7 +174,7 @@ export function Coverage({ coverage }: { coverage: CoverageEntry[] }) {
               <td>
                 <Badge tone={COVERAGE_TONE[entry.status]}>{sentence(entry.status)}</Badge>
               </td>
-              <td className="text-ink-2">
+              <td className="text-ink-2 [overflow-wrap:anywhere]">
                 {entry.detail}
                 {entry.as_of && <span className="meta"> · as of {dateOnly(entry.as_of)}</span>}
               </td>
