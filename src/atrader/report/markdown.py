@@ -1,4 +1,5 @@
-"""Render a ResearchReport as Markdown (structure from docs/01, "Report structure")."""
+"""Render the full analysis behind the signal card as Markdown (docs/01, "Report
+structure"). The card itself is in `report.card`."""
 
 from __future__ import annotations
 
@@ -12,36 +13,33 @@ from atrader.contracts import (
 )
 from atrader.formatting import format_value
 
-_ASSESSMENT_LABEL = {
-    "supportive": "Supportive",
-    "mixed": "Mixed",
-    "adverse": "Adverse",
-    "insufficient_evidence": "Insufficient evidence",
-}
 
-
-def render_markdown(report: ResearchReport) -> str:
+def render_details(report: ResearchReport, card_name: str | None = None) -> str:
     pack = report.pack
-    parts = [_header(report), _assessment(report)]
+    parts = [_header(report, card_name), _score_breakdown(report)]
     if pack is not None:
         parts += [_coverage(report), _financials(pack), _metrics(pack), _catalysts(pack)]
     if report.request.mode != Mode.DATA_ONLY:
-        parts += [_analysts(report), _debate(report), _full_mode(report), _conditions(report)]
+        parts += [_analysts(report), _debate(report), _risk_team(report), _synthesis(report)]
     parts += [_appendix(report)]
     return "\n\n".join(p for p in parts if p).strip() + "\n"
 
 
-def _header(report: ResearchReport) -> str:
+def _header(report: ResearchReport, card_name: str | None) -> str:
     pack, request = report.pack, report.request
     name = f"{pack.listing.name} ({pack.listing.exchange}: {pack.listing.symbol})" if pack \
         else request.symbol
+    card = f"the [signal card]({card_name})" if card_name else "the signal card"
     lines = [
-        f"# {name}",
+        f"# {name}: full analysis",
+        "",
+        f"The answer is on {card}; this file shows the work behind it.",
         "",
         "| | |",
         "|---|---|",
         f"| ISIN | {pack.listing.isin if pack else 'unresolved'} |",
-        f"| Horizon | {request.horizon.description} |",
+        f"| NSE industry | {(pack.industry if pack else None) or 'not classified'} |",
+        "| Outlook | 1 month · 6 months · 2 years |",
         f"| Knowledge cutoff | {pack.cutoff if pack else request.cutoff or 'latest'} (IST) |",
         f"| Mode | {request.mode.value} |",
         f"| Status | {report.status.value} |",
@@ -52,25 +50,37 @@ def _header(report: ResearchReport) -> str:
     return "\n".join(lines)
 
 
-def _assessment(report: ResearchReport) -> str:
-    if report.request.mode == Mode.DATA_ONLY:
-        return "## Assessment\n\nData-only run: no model was called and no assessment is made."
-    label = _ASSESSMENT_LABEL[report.assessment.value] if report.assessment else "None"
-    lines = [f"## Assessment: {label}"]
-    before = report.assessment_before_vetoes
-    if before and report.assessment and before != report.assessment:
-        lines.append(f"\nThe portfolio manager wrote **{_ASSESSMENT_LABEL[before.value]}**; "
-                     "code-enforced constraints changed it.")
-    synthesis = report.final_synthesis
-    if synthesis and synthesis.summary:
-        lines.append(f"\n{synthesis.summary}")
-    if synthesis and synthesis.top_reasons:
-        lines += ["", "**Top reasons**", *_reasons(synthesis.top_reasons)]
-    if synthesis and synthesis.key_risks:
-        lines += ["", "**Key risks**", *_reasons(synthesis.key_risks)]
-    if report.vetoes:
-        lines += ["", "**Code-enforced constraints**"]
-        lines += [f"- `{v.severity}` {v.code}: {v.message}" for v in report.vetoes]
+def _score_breakdown(report: ResearchReport) -> str:
+    card = report.scorecard
+    if card is None:
+        return ""
+    lines = [f"## Score breakdown ({card.version})"]
+    for p in card.pillars:
+        lines += ["", f"### {p.pillar.label}: "
+                  + (f"{p.score} / 100, confidence {p.confidence.value}" if p.score is not None
+                     else "not scored")]
+        if p.score is not None:
+            lines.append("- Starts at 50")
+        lines += [f"- {f.points:+.1f} {f'_{f.group}_ ' if f.group else ''}{f.label} "
+                  f"{_cite(f.evidence_ids, f.label)}".rstrip() for f in p.factors]
+        if p.adjustment:
+            lines.append(f"- {p.adjustment:+d} analyst adjustment: {p.adjustment_reason} "
+                         f"{_cite(p.adjustment_evidence)}".rstrip())
+        if p.note:
+            lines.append(f"- Note: {p.note}")
+    lines += ["", "### Horizons", "", "| Horizon | Score | Signal | Weight covered | "
+              "Manager adjustment | Held by |", "|---|---|---|---|---|---|"]
+    lines += [f"| {h.horizon.label} | {h.score if h.score is not None else '—'} | "
+              f"{h.signal.label} | {h.weight_covered}% | {h.manager_adjustment:+d} | "
+              f"{', '.join(h.capped_by) or '—'} |" for h in card.horizons]
+    if card.levels and card.levels.flips:
+        lines += ["", "### Signal flips", "", "The next session's close at which each signal "
+                  "would change, at average volume with every other input unchanged "
+                  f"(searched to ±{card.levels.flips[0].searched_pct:.0f}%).", "",
+                  "| Horizon | Direction | Close | Signal there |", "|---|---|---|---|"]
+        lines += [f"| {f.horizon.label} | {f.direction} | "
+                  f"{format_value(f.price, 'INR/share') if f.price else 'no change'} | "
+                  f"{f.signal.label if f.signal else '—'} |" for f in card.levels.flips]
     return "\n".join(lines)
 
 
@@ -157,6 +167,10 @@ def _analysts(report: ResearchReport) -> str:
                          f"{flag}".replace("  ", " "))
         if a.gaps:
             lines.append("- Gaps: " + "; ".join(a.gaps))
+        lines += [f"- Score adjustment `{x.pillar.value}` {x.points:+d}: {x.reason} "
+                  f"{_cite(x.evidence_ids)}".rstrip() for x in a.score_adjustments]
+        lines += [f"- Event ({e.materiality}, impact {e.impact:+d}): {e.event} "
+                  f"{_cite(e.evidence_ids, e.event)}".rstrip() for e in a.events]
     return "\n".join(lines)
 
 
@@ -179,37 +193,36 @@ def _debate(report: ResearchReport) -> str:
     return "\n".join(lines)
 
 
-def _full_mode(report: ResearchReport) -> str:
-    lines: list[str] = []
-    decision = report.research_decision
-    if decision:
-        lines += ["## Research manager", f"Stronger side: **{decision.stronger_side}**, "
-                  f"assessment {decision.assessment.value}.", "", decision.rationale]
-        if decision.unresolved:
-            lines += ["", "Unresolved: " + "; ".join(decision.unresolved)]
-    plan = report.trader_plan
-    if plan:
-        lines += ["", "## Trader (hypothetical plan, no orders)", f"Stance: **{plan.stance}**"]
-        lines += [f"- Condition: {c}" for c in plan.conditions_to_consider]
-        lines += [f"- Invalidation: {c}" for c in plan.invalidation]
-        lines += [f"- Scenario _{s.name}_: {s.description}" for s in plan.scenarios]
-    if report.risk_reviews:
-        lines += ["", "## Risk team"]
-        for r in report.risk_reviews:
-            lines += [f"- **{r.perspective}** ({r.verdict}): {r.rationale}"]
-            lines += [f"  - {o}" for o in r.objections]
+def _risk_team(report: ResearchReport) -> str:
+    if not report.risk_reviews:
+        return ""
+    lines = ["## Risk team (reviews of the draft scorecard)"]
+    for r in report.risk_reviews:
+        lines += [f"- **{r.perspective}** (draft scores {r.verdict}): {r.rationale}"]
+        lines += [f"  - {o}" for o in r.objections]
+        lines += [f"  - constraint: {c}" for c in r.constraints]
     return "\n".join(lines)
 
 
-def _conditions(report: ResearchReport) -> str:
+def _synthesis(report: ResearchReport) -> str:
     s = report.final_synthesis
     if not s:
         return ""
-    lines = ["## What would change the conclusion"]
-    for title, items in (("Strengthen if", s.strengthen_if), ("Weaken if", s.weaken_if),
-                         ("Invalidate if", s.invalidate_if), ("Unresolved", s.unresolved)):
-        if items:
-            lines += ["", f"**{title}**", *[f"- {i}" for i in items]]
+    lines = ["## Portfolio manager"]
+    if s.summary:
+        lines += ["", s.summary]
+    if s.pros:
+        lines += ["", "**Pros**", *_reasons(s.pros)]
+    if s.cons:
+        lines += ["", "**Cons**", *_reasons(s.cons)]
+    for note in s.horizons:
+        lines += ["", f"**{note.horizon.label}** (adjustment {note.adjustment:+d}"
+                  + (f": {note.adjustment_reason}" if note.adjustment_reason else "") + ")"]
+        lines += [f"- Driver: {d}" for d in note.drivers]
+        lines += [f"- Up if: {u}" for u in note.up_if]
+        lines += [f"- Down if: {d}" for d in note.down_if]
+    if s.unresolved:
+        lines += ["", "**Unresolved**", *[f"- {u}" for u in s.unresolved]]
     return "\n".join(lines)
 
 

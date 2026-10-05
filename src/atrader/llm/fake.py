@@ -18,10 +18,10 @@ from pydantic import BaseModel
 from atrader.contracts import (
     AnalystOutput,
     DebateOutput,
-    JudgeOutput,
+    Horizon,
     ModelCall,
+    NewsAnalystOutput,
     RiskOutput,
-    StrategyOutput,
     SynthesisOutput,
 )
 from atrader.llm.gateway import RunBudget, StructuredResult, Tier
@@ -70,6 +70,12 @@ def demo_responder(node: str, schema: type[BaseModel], prompt: str) -> dict[str,
                 "claims": [{"statement": f"{note} Observation grounded in {', '.join(first)}.",
                             "kind": "interpretation", "evidence_ids": first}] if first else [],
                 "gaps": []}
+    if schema is NewsAnalystOutput:
+        disclosures = [i for i in ids if i[0] in "AN"][:1]
+        return {"stance": "mixed", "summary": f"{note} {node} reviewed the disclosures.",
+                "claims": [], "gaps": [],
+                "events": [{"event": f"{note} An event.", "impact": 1, "materiality": "medium",
+                            "evidence_ids": disclosures}] if disclosures else []}
     if schema is DebateOutput:
         side = "bull" if "bull" in node else "bear"
         challenges = ([{"target_claim_id": claims[0], "dispute": "assumption",
@@ -79,18 +85,14 @@ def demo_responder(node: str, schema: type[BaseModel], prompt: str) -> dict[str,
             {"statement": f"{note} {side} point citing {', '.join(first)}.",
              "kind": "interpretation", "evidence_ids": first}] if first else [],
             "challenges": challenges, "falsifiers": [f"{note} A falsifier for the {side} case."]}
-    if schema is JudgeOutput:
-        return {"stronger_side": "balanced", "assessment": "mixed",
-                "unresolved": [f"{note} unresolved question"], "rationale": note}
-    if schema is StrategyOutput:
-        return {"stance": "watch", "conditions_to_consider": [note],
-                "invalidation": [note], "evidence_ids": first}
     if schema is RiskOutput:
-        return {"verdict": "caution", "objections": [note], "evidence_ids": first,
+        return {"verdict": "fair", "objections": [note], "evidence_ids": first,
                 "rationale": note}
     if schema is SynthesisOutput:
-        return {"assessment": "mixed", "summary": note,
-                "top_reasons": [{"statement": note, "evidence_ids": first}],
-                "key_risks": [{"statement": note, "evidence_ids": first}],
+        return {"summary": note,
+                "pros": [{"statement": note, "evidence_ids": first}],
+                "cons": [{"statement": note, "evidence_ids": first}],
+                "horizons": [{"horizon": h.value, "drivers": [note], "up_if": [note],
+                              "down_if": [note]} for h in Horizon],
                 "unresolved": [note]}
     raise ValueError(f"demo responder has no answer for {schema.__name__}")

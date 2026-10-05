@@ -1,5 +1,5 @@
-"""The step the three risk debators share: review the trader's plan once each, in turn,
-seeing the reviews before them."""
+"""The step the three risk debators share: review the draft scorecard once each. They run
+in parallel, so none sees the others' reviews; the portfolio manager reads all three."""
 
 from atrader.agents import context
 from atrader.agents.utils import ask
@@ -7,7 +7,7 @@ from atrader.contracts import AgentStatus, RiskOutput, RiskReview
 from atrader.verification import known_ids
 
 
-def review_plan(llm, state, perspective, role):
+def review_scorecard(llm, state, perspective, role):
     pack = state["pack"]
     evidence = context.join(
         context.company(pack),
@@ -15,15 +15,15 @@ def review_plan(llm, state, perspective, role):
         context.metrics(pack, "technical", "pattern", "liquidity",
                         title="Technicals and liquidity"),
         context.coverage(pack),
-        context.research_decision(state),
-        context.trader_plan(state),
-        context.risk_reviews(state),
+        context.analyst_reports(state),
+        context.debate(state),
+        context.draft_scorecard(state),
         context.vetoes(state),
-        f"Give the {perspective} risk review of this plan.",
+        f"Give the {perspective} risk review of the draft scorecard.",
     )
     output, call_ids, error = ask(llm, f"{perspective}_debator", role, evidence, RiskOutput)
     if output is None:
-        review = RiskReview(perspective=perspective, verdict="caution",
+        review = RiskReview(perspective=perspective, verdict="fair",
                             rationale=f"Reviewer unavailable: {error}",
                             status=AgentStatus.FAILED, model_call_ids=call_ids)
     else:

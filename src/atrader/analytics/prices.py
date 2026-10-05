@@ -60,11 +60,14 @@ def split_bonus_adjust(bars: list[PriceBar]) -> tuple[list[PriceBar], list[Adjus
     return adjusted, events
 
 
-def bars_frame(bars: list[PriceBar]) -> pd.DataFrame:
+def bars_frame(bars: list[PriceBar] | tuple[PriceBar, ...]) -> pd.DataFrame:
     frame = pd.DataFrame(
         [{"session": b.session, "open": b.open, "high": b.high, "low": b.low,
-          "close": b.close, "volume": b.volume, "turnover": b.turnover_inr} for b in bars]
+          "close": b.close, "volume": b.volume, "turnover": b.turnover_inr,
+          "trades": b.trades, "delivery_pct": b.delivery_pct} for b in bars]
     )
     if frame.empty:
         return frame
+    for column in ("turnover", "trades", "delivery_pct"):  # optional fields: None -> NaN
+        frame[column] = pd.to_numeric(frame[column], errors="coerce")
     return frame.set_index("session").sort_index()

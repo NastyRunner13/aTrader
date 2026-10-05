@@ -8,9 +8,7 @@ from decimal import Decimal
 
 import pytest
 
-from atrader.analytics.fundamentals import fundamental_metrics
-from atrader.analytics.patterns import detect_patterns
-from atrader.analytics.technicals import technical_metrics
+from atrader.analytics.metrics import pack_metrics
 from atrader.config import Settings
 from atrader.contracts import (
     Announcement,
@@ -18,7 +16,7 @@ from atrader.contracts import (
     CoverageEntry,
     EvidencePack,
     FinancialFact,
-    Horizon,
+    IndexSeries,
     Listing,
     PriceBar,
     ResearchRequest,
@@ -26,7 +24,6 @@ from atrader.contracts import (
     SourceRef,
     StatementBasis,
 )
-from atrader.data.evidence_builder import resolve_metric_ids
 from atrader.timeutil import IST, weekdays_back
 
 CUTOFF = date(2026, 9, 30)
@@ -83,13 +80,19 @@ def make_facts() -> list[FinancialFact]:
     return [f.model_copy(update={"evidence_id": f"F{i}"}) for i, f in enumerate(facts, 1)]
 
 
+def make_index(name: str = "Nifty 50", role: str = "benchmark", *, sessions: int = 260,
+               drift: float = 0.0005, pe: float | None = 20.0) -> IndexSeries:
+    days = weekdays_back(CUTOFF, sessions)
+    closes = tuple((d, 20_000 * math.exp(drift * i)) for i, d in enumerate(days))
+    return IndexSeries(name=name, role=role, closes=closes, pe=pe,  # type: ignore[arg-type]
+                       pe_as_of=days[-1] if pe is not None else None)
+
+
 def make_pack(*, bars: list[PriceBar] | None = None, facts: list[FinancialFact] | None = None,
-              horizon: Horizon = Horizon.SWING, with_text: bool = True) -> EvidencePack:
+              with_text: bool = True, indices: tuple[IndexSeries, ...] = ()) -> EvidencePack:
     bars = make_bars() if bars is None else bars
     facts = make_facts() if facts is None else facts
-    metrics = technical_metrics(bars) + detect_patterns(bars)
-    metrics += fundamental_metrics(facts, bars[-1].close if bars else None,
-                                   bars[-1].session if bars else None)
+    metrics = pack_metrics(bars, facts, indices)
     announcements, shareholding = [], []
     if with_text:
         published = datetime(2026, 9, 15, 12, 0, tzinfo=IST)
@@ -102,9 +105,9 @@ def make_pack(*, bars: list[PriceBar] | None = None, facts: list[FinancialFact] 
             evidence_id="S1", period_end=date(2026, 6, 30), promoter_pct=55.0, public_pct=45.0,
             published_at=published, source=SourceRef(provider="test.shareholding"))]
     return EvidencePack(
-        listing=LISTING, cutoff=CUTOFF, horizon=horizon, built_at=datetime.now(UTC),
-        facts=tuple(facts), metrics=tuple(resolve_metric_ids(metrics)),
-        announcements=tuple(announcements), shareholding=tuple(shareholding), bars=tuple(bars),
+        listing=LISTING, cutoff=CUTOFF, built_at=datetime.now(UTC),
+        facts=tuple(facts), metrics=tuple(metrics), announcements=tuple(announcements),
+        shareholding=tuple(shareholding), bars=tuple(bars), indices=indices,
         coverage=(CoverageEntry(category="prices", status=Coverage.AVAILABLE),),
     )
 

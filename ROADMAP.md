@@ -1,8 +1,8 @@
 # aTrader roadmap
 
-Last updated **4 October 2026**. Feature IDs (F01–F37) come from [docs/03](docs/03-feature-map.md) and delivery stages from [docs/09](docs/09-validation-and-roadmap.md). Update this file whenever a feature changes status.
+Last updated **5 October 2026**. Feature IDs (F01–F37) come from [docs/03](docs/03-feature-map.md) and delivery stages from [docs/09](docs/09-validation-and-roadmap.md). Update this file whenever a feature changes status.
 
-**Where we are:** the first working version runs end to end on live NSE data **with a real model**. On 4 October 2026, a compact run on L&T through OpenRouter (`stealth/space-bunny-alpha`) made 6 calls, all valid on the first attempt, at zero cost. Every figure checked against the XBRL facts was correct. Next: run the other nine pilot companies.
+**Where we are:** the first working version runs end to end on live NSE data **with a real model**, and ends in a **signal card**: 0–100 scores and signals for 1 month, 6 months and 2 years. Agents in the same step run in parallel. On 4 October 2026, a compact run on L&T made 6 calls, all valid on the first attempt, at zero cost, in 52 s of model time (about 88 s before the parallel graph). On 5 October the scorecard moved to `scorecard/2`: technical rules are grouped and capped, valuation compares the P/E with the NSE sector index, volume and delivery flows are scored, and the card shows price levels and the closes that would flip each signal. The scoring rules and weights are still starting priors; the next step is to validate them with the `--cutoff` backtest (M2) and run the other nine pilot companies.
 
 Status key: ✅ done · 🟡 partial · ⬜ not started · ⏸ deferred by decision
 
@@ -14,7 +14,9 @@ Status key: ✅ done · 🟡 partial · ⬜ not started · ⏸ deferred by decis
 
 **Data layer** (`src/atrader/data/`)
 - NSE instrument master: symbol ↔ ISIN, with candidate suggestions for unknown symbols.
-- NSE daily bhavcopy for all equities, plus all NSE index closes, stored in local SQLite. Holidays are remembered, and splits/bonuses are detected from the exchange's published previous close.
+- NSE daily bhavcopy for all equities, plus all NSE index closes, stored in local SQLite. Holidays are remembered, and splits/bonuses are detected from the exchange's published previous close. A 404 for today or yesterday is no longer recorded as a holiday (it may be unpublished), and such early records are retried.
+- NSE delivery position (`sec_bhavdata_full`) for the last ~100 sessions: delivered quantity and delivery % per stock and day.
+- NSE industry for each Nifty Total Market stock, mapped to a sector index (17 industries; 5 without a close-fitting index are left unmapped).
 - XBRL quarterly results from both NSE eras (legacy up to Q3 FY25, Integrated Filing after). Standalone and consolidated stay separate, and restatements are flagged.
 - Corporate announcements, with order-win intimations identified. Shareholding (promoter/public %).
 - GDELT headlines, filtered to stories that name the company.
@@ -22,14 +24,19 @@ Status key: ✅ done · 🟡 partial · ⬜ not started · ⏸ deferred by decis
 - The evidence pack: every item gets an ID (`F3`, `M12`, `A2`…), and every source gets a coverage status (available, partial, stale, missing, access_blocked, not_requested).
 
 **Analytics** (`src/atrader/analytics/`)
-- Indicators: SMA 20/50/200, RSI, MACD, ATR, volatility, period returns, volume ratio, liquidity, and relative strength vs Nifty 50.
+- Indicators: SMA and EMA 20/50/200, RSI, MACD, ATR, volatility, period returns, volume ratio, liquidity, and relative strength vs Nifty 50 and the sector index.
+- Flows (`flows.py`): average volume and delivered volume on up days vs down days, delivery share vs its 60-session norm, volume EMA 20/50 trend, average trade size.
+- Levels (`levels.py`): support/resistance zones from confirmed swing points, the close that breaks the nearest support, anchored VWAPs (since results, 52-week high and low), the heaviest-traded price band.
+- Signal flips (`flips.py`): the next close at which each horizon's signal changes, found by re-scoring a hypothetical session.
 - Chart signals (versioned rules): moving-average trend, confirmed range breakout, unusual volume.
-- Fundamentals: YoY/QoQ growth, margins, other income as a share of PBT, trailing EPS, P/E, approximate market cap, and Nifty P/E context.
-- Vetoes: stale prices, short history, old results, low liquidity and missing core data cap or block the final assessment.
+- Fundamentals: YoY/QoQ growth, margins, other income as a share of PBT, trailing EPS, P/E, approximate market cap, and the P/E of the sector index and the Nifty 50.
+- Vetoes: stale prices, short history, old results, low liquidity and missing core data hold the signal at Neutral or withhold it.
+- Scorecard (`scoring.py`, `ranges.py`): rule-based area scores with cited points, technical rules in five capped groups (trend, momentum, performance, breakout, flows), P/E against the sector index first, analyst adjustments (±15, verified), news from rated events, horizon weights, a manager adjustment (±5), signal bands, volatility ranges (1M/6M) and EPS × P/E scenarios (2Y).
 
 **Agents and graph** (`src/atrader/agents/`, `src/atrader/graph/`)
-- TradingAgents-style agents, one file each: market, fundamentals and news analysts; bull and bear researchers; research manager; trader; aggressive, conservative and neutral debators; portfolio manager.
-- Modes: `data_only` (0 calls), `compact` (6 calls, cap 8) and `full` (13 calls, cap 17).
+- TradingAgents-style agents, one file each: market, fundamentals and news analysts; bull and bear researchers; aggressive, conservative and neutral debators; portfolio manager. The trader and research manager were removed on 4 October 2026: the signal card replaces the trader's plan, and the portfolio manager judges the debate.
+- Parallel steps: the analysts; bull and bear in each debate round; the three risk debators. Up to 4 model calls at once.
+- Modes: `data_only` (0 calls, code-only scorecard), `compact` (6 calls, cap 8) and `full` (11 calls, cap 14).
 - Claim verification: invented citations, and numbers without a backing fact or metric, are marked unsupported and never reach later agents.
 
 **Model gateway** (`src/atrader/llm/`)
@@ -40,7 +47,7 @@ Status key: ✅ done · 🟡 partial · ⬜ not started · ⏸ deferred by decis
 **Product and quality**
 - CLI: `research`, `resume`, `ingest`, `search`, `models`, `usage`, `runs`.
 - Reports in Markdown and JSON, with coverage, a results table, metrics, catalysts, debate, model calls, filings used and limitations.
-- 51 offline tests on synthetic data; ruff and mypy (strict) clean. Git repository initialised; nothing committed yet.
+- 98 offline tests on synthetic data; ruff and mypy (strict) clean. Baseline committed on `main`; scorecard work on `feature/scorecard-signals`.
 
 ## Feature status
 
@@ -57,17 +64,17 @@ Status key: ✅ done · 🟡 partial · ⬜ not started · ⏸ deferred by decis
 | F07 | Business segments and exposures | P0 basic | ⬜ | Segment facts exist in XBRL but are skipped for now |
 | F08 | Company order backlog | P0 basic | 🟡 | Order-win intimations flagged; prompts forbid treating them as secured revenue. Missing: amounts and status from PDFs, reported backlog totals |
 | F09 | Ownership and governance | P0 basic | 🟡 | Promoter/public % by quarter; governance disclosures reach the news analyst. Missing: pledges, auditor/director change parsing |
-| F10 | Sector-aware valuation | P0 simple | 🟡 | Trailing P/E, approximate market cap, index P/E context. Missing: peer sets, bank metrics (P/B, ROA) |
+| F10 | Sector-aware valuation | P0 simple | 🟡 | Trailing P/E scored against the NSE sector index P/E, then the Nifty 50; approximate market cap. Missing: peer sets, own-history P/E, bank metrics (P/B, ROA) |
 | F11 | Company and sector news | P0 | 🟡 | GDELT company headlines with a relevance filter. Missing: sector news, publisher RSS, a reliable fallback when GDELT rate-limits |
 | F12 | Macro and geopolitics | P0 basic | ⬜ | No RBI/MoSPI adapters, so no macro analyst yet |
 | F13 | Reddit/community research | P1 cond. | ⏸ | Disabled until approved access and permitted processing are confirmed |
 | F14 | Hindi/regional-language research | P1 | ⬜ | |
-| F15 | Trend, momentum, volume, volatility | P0 | ✅ | Tested indicators |
+| F15 | Trend, momentum, volume, volatility | P0 | ✅ | Tested indicators, plus volume and delivery flows (up/down-day averages, delivery share, volume EMA) |
 | F16 | Chart-pattern detection | P0 simple | ✅ | Three versioned rules. Held-out validation is part of F32 |
-| F17 | Relative strength and sector context | P0 | 🟡 | 3M vs Nifty 50 (price index). Missing: sector index comparison (the data is already ingested) |
-| F18 | Bull/bear debate and judge | P0 | ✅ | Claim IDs, validated challenges, bounded rounds; research manager in full mode |
-| F19 | Hypothetical strategy planner | P0 | ✅ | Trader writes stance, conditions, invalidation and scenarios; no execution tools |
-| F20 | Risk review + final manager | P0 | ✅ | Three risk debators (full), portfolio manager, code vetoes after synthesis |
+| F17 | Relative strength and sector context | P0 | ✅ | 3M vs Nifty 50 and vs the stock's NSE sector index. Stocks outside the Nifty Total Market list, or in an unmapped industry, get the Nifty 50 only |
+| F18 | Bull/bear debate and judge | P0 | ✅ | Claim IDs, validated challenges, bounded parallel rounds; the portfolio manager judges |
+| F19 | Hypothetical strategy planner | P0 | 🟡 | Replaced by the signal card: per-horizon score, signal, drivers, up/down triggers, price ranges, price levels and code-computed signal-flip closes. Scores not yet validated (F32) |
+| F20 | Risk review + final manager | P0 | ✅ | Three parallel risk debators review the draft scorecard (full); portfolio manager; code vetoes on the scorecard |
 | F21 | Evidence verification and coverage | P0 | ✅ | Citation and number checks; coverage carried into the report. Human semantic audit is part of F32 |
 | F22 | Research memory and change detection | P0 archive | 🟡 | Report archive. Missing: compare-to-previous-report, reflection |
 
@@ -79,7 +86,7 @@ Status key: ✅ done · 🟡 partial · ⬜ not started · ⏸ deferred by decis
 | F24 | Free-only OpenRouter gateway | P0 | ✅ | Live-tested 2026-10-04: zero cost reported; the run cap held at 8 when a bad config produced empty answers; reasoning models get a bounded effort and output budget |
 | F25 | Resume, cancel, retry, partial result | P0 | 🟡 | Resume after quota pause, retry, repair, partial reports. Missing: cancel |
 | F26 | Evidence-grounded follow-up questions | P1 | ⬜ | |
-| F27 | Markdown/JSON export; print view | P0 | ✅ | Markdown and JSON written for every run |
+| F27 | Markdown/JSON export; print view | P0 | ✅ | Signal card (Markdown and terminal), full-analysis Markdown and JSON for every run |
 | F28 | Side-by-side comparison | P1 | ⬜ | |
 | F29 | Deterministic stock screener | P1 | ⬜ | Groundwork done: bhavcopy already stores every NSE equity |
 | F30 | Local watchlist event alerts | P1 | ⬜ | |
@@ -87,7 +94,7 @@ Status key: ✅ done · 🟡 partial · ⬜ not started · ⏸ deferred by decis
 | F32 | Historical evaluation and ablations | P0 harness | ⬜ | Groundwork done: `--cutoff` and point-in-time filtering |
 | F33 | Hypothetical portfolio risk | P1 | ⬜ | |
 | F34 | Market depth / order flow | P2 cond. | ⏸ | Needs an entitled broker feed |
-| F35 | F&O, option chains, OI, IV | P2 cond. | ⏸ | |
+| F35 | F&O, option chains, OI, IV | P2 cond. | ⏸ | The F&O bhavcopy (open interest) and participant-wise OI files were reachable on 5 Oct; not built |
 | F36 | Public / multi-user deployment | P2 cond. | ⏸ | Needs data rights and a SEBI review |
 | F37 | Broker execution | Out of scope | ⏸ | Not planned |
 
@@ -121,6 +128,7 @@ Ordered by dependency. Each milestone ends with something you can run.
 - [ ] Build a 30-case research-quality set (unit traps, restatements, missing data, injection text in documents).
 - [ ] Human-audit sampled claims for support; report the denominator.
 - [ ] Baselines: single-model synthesis vs compact vs full.
+- [ ] Validate the scorecard: run code-only scorecards at monthly `--cutoff` dates across the pilot set (no model calls), check whether higher scores preceded better 1M/6M returns, then tune the rule points, group caps and horizon weights. Test in particular whether 1-month weakness predicts further weakness or a rebound: published research generally finds short-term reversal.
 - **Exit:** a measured answer to "is full mode worth 2× the calls?"
 
 ### M3 — Indian data depth (F04, F05, F07, F08, F09, F17)
@@ -129,7 +137,10 @@ Ordered by dependency. Each milestone ends with something you can run.
 - [ ] Reported backlog totals from results presentations.
 - [ ] Promoter pledges from shareholding filings.
 - [ ] Segment revenue and results from XBRL dimensions.
-- [ ] Sector index relative strength.
+- [x] Sector index relative strength and sector P/E (5 Oct).
+- [ ] FII and mutual-fund holdings per stock, and pledges, from the quarterly shareholding XBRL (the `xbrl` link is already in the shareholding API).
+- [ ] Daily collector for market-wide FII/DII cash flows and participant-wise futures OI, as a market-regime input (never a stock's own score).
+- [ ] F&O open-interest build-up for F&O stocks; bulk and block deals collected daily.
 - **Exit:** the order-backlog section works for at least one EPC company.
 
 ### M4 — Macro and news (F11, F12)
@@ -162,7 +173,9 @@ F13 Reddit, F14 Hindi sources, F34–F35 depth and derivatives, and F36 public d
 
 - NSE `www.nseindia.com/api/*` endpoints are unofficial; if they start refusing, coverage shows `access_blocked`.
 - GDELT rate-limits (HTTP 429); news is then missing for that run.
-- A full `ingest` takes 30–40 minutes the first time (about 7 s per trading day at a polite rate).
+- A full `ingest` takes 30–40 minutes the first time (about 7 s per trading day at a polite rate). The first run after the delivery change also fetches ~100 delivery files (about 2–3 minutes).
+- Sector comparisons use today's industry list, not a point-in-time one. A large company can dominate its own sector index (L&T in Nifty Construction), which makes the sector P/E partly a comparison with itself.
+- The 2-year base scenario still holds today's P/E and caps growth at 20%, so every fast grower gets close × 1.2² (+44%).
 - In `--dry-run`, model-call records are kept in memory only, so a resumed dry run lists only the calls made after resuming.
 - The issuer/listing split from docs/07 is collapsed onto the ISIN until BSE mapping arrives.
 - There is no `cancel` command yet. On Windows, stopping the terminal does not always stop the Python process, which can keep running until its call cap (this happened once on 4 October: 8 wasted calls, cap held).

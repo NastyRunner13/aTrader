@@ -25,6 +25,11 @@ def indian_grouping(number: Decimal | float, decimals: int = 2) -> str:
     return f"{sign}{whole}.{frac}" if decimals else f"{sign}{whole}"
 
 
+def rupees(value: float) -> str:
+    """A price in whole rupees with Indian grouping: 345678.9 -> '₹3,45,679'."""
+    return f"₹{indian_grouping(round(value), 0)}"
+
+
 def format_value(value: Decimal | float | None, unit: str) -> str:
     if value is None:
         return "not reported"

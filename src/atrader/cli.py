@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 from datetime import date
 
 import typer
 
 from atrader.config import get_settings
-from atrader.contracts import Horizon, Mode
+from atrader.contracts import Mode
 from atrader.data.http import PoliteClient
 from atrader.data.providers.nse_bhavcopy import ingest_sessions
 from atrader.data.providers.nse_instruments import InstrumentMaster
@@ -20,6 +21,7 @@ from atrader.llm import GatewayError
 from atrader.llm.openrouter import OpenRouterClient
 from atrader.llm.policy import FreeModelPolicy, ineligibility_reason
 from atrader.llm.usage import UsageLedger
+from atrader.report.card import render_card_text
 from atrader.timeutil import today_ist
 
 app = typer.Typer(no_args_is_help=True, add_completion=False,
@@ -30,23 +32,25 @@ app = typer.Typer(no_args_is_help=True, add_completion=False,
 def _main(verbose: bool = typer.Option(False, "--verbose", "-v")) -> None:
     logging.basicConfig(level=logging.INFO if verbose else logging.WARNING,
                         format="%(levelname)s %(name)s: %(message)s")
+    # The card prints ₹; a Windows pipe would otherwise use a code page without it.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
 
 
 @app.command()
 def research(
     symbol: str = typer.Argument(..., help="NSE symbol or ISIN, e.g. LT or INE018A01030"),
-    mode: Mode = typer.Option(Mode.COMPACT, help="data_only (0 calls), compact (6), full (13)"),
-    horizon: Horizon = typer.Option(Horizon.SWING),
+    mode: Mode = typer.Option(Mode.COMPACT, help="data_only (0 calls), compact (6), full (11)"),
     cutoff: str = typer.Option(None, help="Knowledge cutoff YYYY-MM-DD (default: today, IST)"),
     dry_run: bool = typer.Option(False, help="Use placeholder model output; no API calls."),
 ) -> None:
-    """Research one company and write a Markdown + JSON report."""
+    """Research one company: a signal card for 1 month, 6 months and 2 years, plus the
+    full analysis and JSON."""
     graph = ResearchGraph(dry_run=dry_run,
                           on_progress=lambda step: typer.echo(f"  collecting {step}..."))
-    typer.echo(f"Researching {symbol} ({mode.value}, {horizon.value})"
-               + (" [dry run]" if dry_run else ""))
+    typer.echo(f"Researching {symbol} ({mode.value})" + (" [dry run]" if dry_run else ""))
     try:
-        report = graph.run(symbol, mode=mode, horizon=horizon,
+        report = graph.run(symbol, mode=mode,
                            cutoff=date.fromisoformat(cutoff) if cutoff else None)
     except RunPaused as exc:
         typer.secho(f"{exc}\nResume later with: atrader resume {exc.run_id}", fg="yellow")
@@ -70,13 +74,13 @@ def resume(run_id: str) -> None:
 
 @app.command()
 def ingest(sessions: int = typer.Option(320, help="Weekdays of history to download")) -> None:
-    """Download NSE bhavcopy and index files (first run takes a few minutes)."""
+    """Download NSE bhavcopy, index and delivery files (first run takes a few minutes)."""
     settings = get_settings()
     settings.ensure_dirs()
     with PoliteClient(settings.cache_dir, settings.http_min_interval_s) as client:
         result = ingest_sessions(client, MarketStore(settings.db_path), today_ist(), sessions)
-    typer.echo(f"downloaded {result.downloaded}, holidays {result.holidays}, "
-               f"already present {result.already_present}")
+    typer.echo(f"downloaded {result.downloaded}, delivery files {result.delivery_downloaded}, "
+               f"holidays {result.holidays}, already present {result.already_present}")
     for failure in result.failed or []:
         typer.secho(f"  failed {failure}", fg="yellow")
 
@@ -131,13 +135,13 @@ def runs(limit: int = 15) -> None:
 
 
 def _print_summary(report) -> None:  # type: ignore[no-untyped-def]
-    assessment = report.assessment.value if report.assessment else "none (data only)"
-    typer.secho(f"\nAssessment: {assessment}   status: {report.status.value}", bold=True)
-    for veto in report.vetoes:
-        typer.echo(f"  {veto.severity:<5} {veto.code}: {veto.message}")
+    typer.echo("")
+    typer.echo(render_card_text(report))
     calls = [c for c in report.model_calls if c.status != "blocked"]
-    typer.echo(f"Model calls: {len(calls)}")
-    typer.echo(f"Report: {get_settings().reports_dir / (report.report_id + '.md')}")
+    reports_dir = get_settings().reports_dir
+    typer.echo(f"\nStatus: {report.status.value}   model calls: {len(calls)}")
+    typer.echo(f"Card:      {reports_dir / (report.report_id + '.md')}")
+    typer.echo(f"Analysis:  {reports_dir / (report.report_id + '-details.md')}")
 
 
 if __name__ == "__main__":

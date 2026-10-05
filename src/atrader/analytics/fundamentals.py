@@ -81,9 +81,31 @@ def fundamental_metrics(facts: list[FinancialFact], last_close: float | None,
           quarters.get(REVENUE, latest), "profit / revenue")
     ratio("other_income_share", "Other income as share of PBT", quarters.get(OTHER_INCOME, latest),
           quarters.get(PBT, latest), "other_income / pbt")
+    if year_ago:
+        out.extend(_margin_change(quarters, latest, year_ago, suffix))
 
     out.extend(_valuation(quarters, latest, facts, last_close, close_as_of))
     return out
+
+
+def _margin_change(quarters: _Quarters, latest: date, year_ago: date,
+                   suffix: str) -> list[DerivedMetric]:
+    """Pre-tax margin now minus the same quarter a year earlier, in percentage points."""
+    pbt, revenue = quarters.get(PBT, latest), quarters.get(REVENUE, latest)
+    pbt_before, revenue_before = quarters.get(PBT, year_ago), quarters.get(REVENUE, year_ago)
+    if not (pbt and revenue and pbt_before and revenue_before):
+        return []
+    if pbt.value is None or pbt_before.value is None or not revenue.value \
+            or not revenue_before.value:
+        return []
+    change = (pbt.value / revenue.value - pbt_before.value / revenue_before.value) * 100
+    return [DerivedMetric(
+        name="pbt_margin_change_yoy", label=f"Change in PBT margin YoY ({suffix})",
+        value=round(float(change), 2), unit="pp", as_of=latest,
+        formula="pbt / revenue - pbt_year_ago / revenue_year_ago",
+        inputs=(pbt.evidence_id, revenue.evidence_id, pbt_before.evidence_id,
+                revenue_before.evidence_id),
+    )]
 
 
 def _valuation(quarters: _Quarters, latest: date, facts: list[FinancialFact],

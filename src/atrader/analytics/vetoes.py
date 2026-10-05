@@ -1,13 +1,14 @@
 """Deterministic risk and evidence vetoes (docs/04, debate rule 8).
 
 Vetoes are computed from the frozen evidence pack only, so the same pack always
-yields the same constraints. They are shown to the synthesizer as context and then
-enforced on its assessment in code.
+yields the same constraints. Agents see them as context; `analytics.scoring` enforces
+them on the scorecard: `block` withholds every signal and `cap` holds each horizon at
+Neutral or below.
 """
 
 from __future__ import annotations
 
-from atrader.contracts import Assessment, Coverage, EvidencePack, Veto
+from atrader.contracts import Coverage, EvidencePack, Veto
 
 STALE_PRICE_DAYS = 7
 STALE_RESULTS_DAYS = 200
@@ -65,11 +66,3 @@ def compute_vetoes(pack: EvidencePack) -> list[Veto]:
                            message="Sources unavailable this run: " + ", ".join(blocked)))
     return vetoes
 
-
-def enforce(assessment: Assessment, vetoes: list[Veto]) -> Assessment:
-    """Apply vetoes to an assessment. Blocks win over caps; caps only lower `supportive`."""
-    if any(v.severity == "block" for v in vetoes):
-        return Assessment.INSUFFICIENT_EVIDENCE
-    if assessment == Assessment.SUPPORTIVE and any(v.severity == "cap" for v in vetoes):
-        return Assessment.MIXED
-    return assessment

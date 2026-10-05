@@ -2,6 +2,8 @@
 
 This is the proposed aTrader graph. It retains the analyst/debate/manager structure observed in [TradingAgents graph setup](https://github.com/TauricResearch/TradingAgents/blob/main/tradingagents/graph/setup.py), while defining our own evidence contracts and India-specific responsibilities.
 
+> **Update, 4 October 2026 (built).** Runs now end in a code-computed **signal card**: 0–100 area scores (technical, growth & quality, valuation, news), weighted into a score and signal for 1 month, 6 months and 2 years (see `analytics/scoring.py` and the README). Analysts may adjust their own area by ±15 with cited evidence, the news analyst rates events, and the portfolio manager may move a horizon by ±5 and writes pros, cons and up/down triggers. The **trader and research manager were removed**: the card replaces the trader's plan, and the portfolio manager judges the debate. Agents in the same step run **in parallel**: the analysts, bull and bear in each debate round (both open at once, then both rebut), and the three risk debators, who now review the draft scorecard. Sections below that describe the trader, research manager, a sequential debate or a single horizon setting predate this change.
+
 ## Principle: roles are not necessarily separate model calls
 
 Fetching prices, computing RSI, checking citations, enforcing limits, and rendering a report should be code, not conversational agents. Specialist interpretation and deliberation use LLMs. Compact mode combines compatible interpretation roles; full mode separates them. Both use the same validated data.

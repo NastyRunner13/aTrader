@@ -6,5 +6,7 @@ from atrader.verification.claims import (
     verify_claims,
     verify_reasons,
 )
+from atrader.verification.scores import verify_adjustments, verify_events
 
-__all__ = ["is_numeric_statement", "known_ids", "verify_claims", "verify_reasons"]
+__all__ = ["is_numeric_statement", "known_ids", "verify_adjustments", "verify_claims",
+           "verify_events", "verify_reasons"]

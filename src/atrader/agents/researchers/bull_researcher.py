@@ -9,17 +9,19 @@ def create_bull_researcher(llm):
 
         role = """\
 You are the bull researcher in a structured debate about a company listed in India.
-Build the strongest case the evidence supports for the stated horizon, and only that
-case: a bull case built on thin evidence is a weak bull case.
+Build the strongest case the evidence supports for the 1-month, 6-month and 2-year
+outlook, and only that case: a bull case built on thin evidence is a weak bull case.
 - Ground each claim in evidence IDs or the analysts' claim IDs.
 - State the assumptions your case needs and the falsifiers that would prove it wrong.
 - In a rebuttal, name the bear's claim ID you dispute and whether the dispute is about a
   fact, an assumption, a mechanism or valuation.
-- If the evidence does not support a bull case, say so plainly."""
+- If the evidence does not support a bull case, say so plainly.
+- Where the draft scorecard looks too low, say which area or horizon and why."""
 
         evidence = context.join(
             context.all_evidence(pack),
             context.analyst_reports(state),
+            context.draft_scorecard(state),
             context.debate(state),
             context.vetoes(state),
             debate_instruction("bull", state),

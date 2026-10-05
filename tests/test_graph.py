@@ -1,7 +1,10 @@
-"""End-to-end graph tests with a fake gateway: call counts per mode, routing, vetoes,
-report output and resume after a quota pause."""
+"""End-to-end graph tests with a fake gateway: call counts per mode, parallel steps,
+routing, the scorecard, vetoes, report output and resume after a quota pause."""
 
 from __future__ import annotations
+
+import re
+import threading
 
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
@@ -9,11 +12,13 @@ from langgraph.checkpoint.memory import InMemorySaver
 from atrader.agents.utils import RULES
 from atrader.contracts import (
     AnalystOutput,
-    Assessment,
     DebateOutput,
+    Horizon,
     Mode,
+    Pillar,
     ResearchRequest,
     RunStatus,
+    Signal,
     SynthesisOutput,
 )
 from atrader.graph.conditional_logic import ConditionalLogic
@@ -23,6 +28,8 @@ from atrader.graph.setup import GraphSetup
 from atrader.llm import LLM, QuotaExhausted, RunBudget
 from atrader.llm.fake import FakeGateway, demo_responder
 from tests.conftest import StaticEvidence, make_bars, make_pack
+
+EVIDENCE_ID = re.compile(r"\[([FMASN]\d+)\]")
 
 
 def _run(mode: Mode, pack=None, responder=None):
@@ -42,15 +49,52 @@ def test_each_mode_makes_exactly_its_planned_calls(mode):
     assert len(nodes) == MODES[mode]["planned_calls"]
     assert set(state["analyst_reports"]) == {"market_analyst", "fundamentals_analyst",
                                              "news_analyst"}
-    assert [t.side for t in state["debate"]] == ["bull", "bear"] * MODES[mode]["debate_rounds"]
-    assert state["final_assessment"] == Assessment.MIXED
+    rounds = MODES[mode]["debate_rounds"]
+    assert [(t.turn_index, t.side) for t in state["debate"]] == [
+        (i + 1, side) for i, side in enumerate(["bull", "bear"] * rounds)]
     assert nodes[-1] == "portfolio_manager"
+    card = state["scorecard"]
+    assert [h.horizon for h in card.horizons] == list(Horizon)
+    assert all(h.signal != Signal.INSUFFICIENT_DATA for h in card.horizons)
     if mode == Mode.FULL:
         assert [r.perspective for r in state["risk_reviews"]] == [
             "aggressive", "conservative", "neutral"]
-        assert state["research_decision"] is not None and state["trader_plan"] is not None
     else:
-        assert "research_decision" not in state and "trader_plan" not in state
+        assert not state.get("risk_reviews")
+
+
+def test_agents_in_the_same_step_run_at_the_same_time():
+    # Each group waits until all its members are in a call at once. If the graph ran
+    # them one after another, the barrier would time out and break the run.
+    groups = {"_analyst": threading.Barrier(3, timeout=10),
+              "_researcher": threading.Barrier(2, timeout=10),
+              "_debator": threading.Barrier(3, timeout=10)}
+
+    def meeting(node, schema, prompt):
+        for suffix, barrier in groups.items():
+            if node.endswith(suffix):
+                barrier.wait()
+        return demo_responder(node, schema, prompt)
+
+    state, gateway = _run(Mode.FULL, responder=meeting)
+    assert len(gateway.calls()) == MODES[Mode.FULL]["planned_calls"]
+    assert len(state["risk_reviews"]) == 3
+
+
+def test_debate_rounds_see_the_previous_round_only():
+    prompts: dict[str, list[str]] = {"bull_researcher": [], "bear_researcher": []}
+
+    def recording(node, schema, prompt):
+        if schema is DebateOutput:
+            prompts[node].append(prompt)
+        return demo_responder(node, schema, prompt)
+
+    state, _ = _run(Mode.FULL, responder=recording)
+    for opening, rebuttal in prompts.values():
+        assert "## Debate so far" not in opening  # openings are written at the same time
+        assert "Turn 1: bull opening" in rebuttal and "Turn 2: bear opening" in rebuttal
+        assert "Turn 3" not in rebuttal and "Turn 4" not in rebuttal
+    assert [t.phase for t in state["debate"]] == ["opening", "opening", "rebuttal", "rebuttal"]
 
 
 def test_rebuttals_see_and_challenge_earlier_claims():
@@ -67,25 +111,55 @@ def test_analyst_without_evidence_is_skipped_without_a_call():
     state, gateway = _run(Mode.COMPACT, pack)
     assert state["analyst_reports"]["news_analyst"].status == "skipped"
     assert "news_analyst" not in [c.node for c in gateway.calls()]
+    news = state["scorecard"].pillar(Pillar.NEWS)
+    assert news.score is None and "no disclosures" in (news.note or "")
 
 
 def test_missing_core_evidence_skips_all_models():
     state, gateway = _run(Mode.COMPACT, make_pack(bars=[], facts=[], with_text=False))
     assert gateway.calls() == []
-    assert state["final_assessment"] == Assessment.INSUFFICIENT_EVIDENCE
+    assert all(h.signal == Signal.INSUFFICIENT_DATA and h.score is None
+               for h in state["scorecard"].horizons)
 
 
-def test_vetoes_cap_a_supportive_conclusion():
-    def supportive(node, schema, prompt):
+def test_cap_vetoes_hold_scores_at_neutral():
+    def eager(node, schema, prompt):
         answer = demo_responder(node, schema, prompt)
         if schema is SynthesisOutput:
-            answer["assessment"] = "supportive"
+            for note in answer["horizons"]:
+                note.update(adjustment=5, adjustment_reason="test")
         return answer
 
     short_history = make_pack(bars=make_bars(sessions=40))
-    state, _ = _run(Mode.COMPACT, short_history, supportive)
-    assert state["final_synthesis"].assessment == Assessment.SUPPORTIVE
-    assert state["final_assessment"] == Assessment.MIXED
+    state, _ = _run(Mode.COMPACT, short_history, eager)
+    six_months = state["scorecard"].horizon(Horizon.SIX_MONTHS)
+    assert six_months.score == 55 and six_months.signal == Signal.NEUTRAL
+    assert "short_price_history" in six_months.capped_by
+    assert all(h.score is None or h.score <= 55 for h in state["scorecard"].horizons)
+
+
+def test_analyst_adjustments_are_verified_and_clamped():
+    def adjusting(node, schema, prompt):
+        answer = demo_responder(node, schema, prompt)
+        if node == "market_analyst":
+            metric = next(i for i in EVIDENCE_ID.findall(prompt) if i.startswith("M"))
+            answer["score_adjustments"] = [
+                {"pillar": "technical", "points": 30, "reason": "rules miss it",
+                 "evidence_ids": [metric]},
+                {"pillar": "valuation", "points": -10, "reason": "not mine",
+                 "evidence_ids": [metric]}]
+        if node == "fundamentals_analyst":
+            answer["score_adjustments"] = [{"pillar": "growth_quality", "points": 10,
+                                            "reason": "invented", "evidence_ids": ["F999"]}]
+        return answer
+
+    state, _ = _run(Mode.COMPACT, responder=adjusting)
+    market = state["analyst_reports"]["market_analyst"].score_adjustments
+    assert [(a.pillar, a.points) for a in market] == [(Pillar.TECHNICAL, 15)]
+    assert state["analyst_reports"]["fundamentals_analyst"].score_adjustments == []
+    technical = state["scorecard"].pillar(Pillar.TECHNICAL)
+    assert technical.adjustment == 15 and technical.score == min(100, technical.base + 15)
+    assert state["scorecard"].pillar(Pillar.GROWTH_QUALITY).adjustment == 0
 
 
 def test_invented_citations_never_reach_the_debate():
@@ -103,12 +177,13 @@ def test_invented_citations_never_reach_the_debate():
         return fabricating(node, schema, prompt)
 
     state, _ = _run(Mode.COMPACT, responder=recording)
-    claims = [c for r in state["analyst_reports"].values() for c in r.claims]
+    claims = [c for key in ("market_analyst", "fundamentals_analyst")
+              for c in state["analyst_reports"][key].claims]
     assert claims and all(c.status == "unsupported" for c in claims)
     assert all("Revenue rose 40%" not in p for p in seen_prompts)
 
 
-def test_prompts_carry_rules_and_fence_untrusted_text():
+def test_prompts_carry_rules_scores_and_fence_untrusted_text():
     captured = {}
 
     class Spy(FakeGateway):
@@ -125,23 +200,40 @@ def test_prompts_carry_rules_and_fence_untrusted_text():
     system, user = captured["news_analyst"]
     assert RULES in system
     assert "<<<DATA" in user and "<<<END DATA>>>" in user
+    assert "### technical:" in captured["market_analyst"][1]
+    assert "### valuation:" in captured["fundamentals_analyst"][1]
+    assert "## Draft scorecard" in captured["portfolio_manager"][1]
 
 
-def test_research_graph_writes_reports(settings):
+def test_research_graph_writes_card_details_and_json(settings):
     graph = ResearchGraph(settings, dry_run=True, evidence_source=StaticEvidence(make_pack()))
     report = graph.run("TESTCO", mode=Mode.COMPACT)
     assert report.status == RunStatus.COMPLETED
     assert len(report.model_calls) == 6
-    markdown = (settings.reports_dir / f"{report.report_id}.md").read_text(encoding="utf-8")
-    assert "Assessment: Mixed" in markdown and "Bull and bear debate" in markdown
+    card = (settings.reports_dir / f"{report.report_id}.md").read_text(encoding="utf-8")
+    assert "| **Signal** |" in card and "## Scores by area" in card and "## Pros" in card
+    assert "Experimental" in card and f"{report.report_id}-details.md" in card
+    details = (settings.reports_dir / f"{report.report_id}-details.md").read_text(
+        encoding="utf-8")
+    assert "## Score breakdown" in details and "Bull and bear debate" in details
     assert (settings.reports_dir / f"{report.report_id}.json").exists()
 
 
-def test_data_only_mode_makes_no_calls(settings):
+def test_data_only_mode_gives_a_code_only_scorecard(settings):
     graph = ResearchGraph(settings, evidence_source=StaticEvidence(make_pack()))
     report = graph.run("TESTCO", mode=Mode.DATA_ONLY)
-    assert report.model_calls == [] and report.assessment is None
-    assert report.status == RunStatus.COMPLETED
+    assert report.model_calls == [] and report.status == RunStatus.COMPLETED
+    card = report.scorecard
+    assert card is not None and not card.model_adjusted
+    assert card.pillar(Pillar.NEWS).score is None
+    assert card.horizon(Horizon.ONE_MONTH).score is not None  # 70% of the weight is scored
+    assert card.levels is not None and card.levels.levels and card.levels.flips
+    text = (settings.reports_dir / f"{report.report_id}.md").read_text(encoding="utf-8")
+    assert "code-only scorecard" in text and "## Pros" in text  # pros from the rules
+    assert "## Price levels" in text and "**Last close**" in text and "Signal flips" in text
+    details = (settings.reports_dir / f"{report.report_id}-details.md").read_text(
+        encoding="utf-8")
+    assert "### Signal flips" in details and "_trend_" in details
 
 
 def test_quota_pause_resumes_without_repeating_work(settings, monkeypatch):
@@ -166,7 +258,7 @@ def test_quota_pause_resumes_without_repeating_work(settings, monkeypatch):
     nodes = [c.node for c in report.model_calls]
     assert nodes.count("market_analyst") == 0  # completed before the pause, not re-run
     assert nodes == ["bear_researcher", "portfolio_manager"]
-    assert len(report.analyst_reports) == 3
+    assert len(report.analyst_reports) == 3 and len(report.debate) == 2
 
 
 def test_in_memory_checkpointer_compiles():
@@ -176,4 +268,4 @@ def test_in_memory_checkpointer_compiles():
     graph = setup.setup_graph(Mode.COMPACT).compile(checkpointer=InMemorySaver())
     result = graph.invoke({"run_id": "r", "request": ResearchRequest(symbol="TESTCO")},
                           {"configurable": {"thread_id": "r"}})
-    assert result["final_assessment"] == Assessment.MIXED
+    assert result["scorecard"] is not None

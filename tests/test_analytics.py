@@ -11,8 +11,8 @@ from atrader.analytics import indicators as ind
 from atrader.analytics.fundamentals import fundamental_metrics
 from atrader.analytics.prices import split_bonus_adjust
 from atrader.analytics.technicals import technical_metrics
-from atrader.analytics.vetoes import compute_vetoes, enforce
-from atrader.contracts import Assessment, PriceBar
+from atrader.analytics.vetoes import compute_vetoes
+from atrader.contracts import PriceBar
 from tests.conftest import make_bars, make_facts, make_pack
 
 
@@ -61,6 +61,9 @@ def test_fundamental_metrics_cite_their_inputs():
     fact_ids = {f.evidence_id for f in facts}
     assert set(metrics["revenue_yoy"].inputs) <= fact_ids
     assert "M:close" in metrics["pe_ttm"].inputs  # resolved to a real ID by the builder
+    # PBT margin 200/1200 now vs 150/1000 a year ago: 16.67% - 15% = +1.67 pp
+    assert metrics["pbt_margin_change_yoy"].value == pytest.approx(1.67, abs=0.01)
+    assert metrics["pbt_margin_change_yoy"].unit == "pp"
 
 
 def test_pack_metric_placeholders_resolve_to_ids():
@@ -72,15 +75,11 @@ def test_pack_metric_placeholders_resolve_to_ids():
 
 def test_vetoes_block_and_cap():
     empty = make_pack(bars=[], facts=[])
-    assert [v.code for v in compute_vetoes(empty)] == ["no_core_evidence"]
-    assert enforce(Assessment.SUPPORTIVE, compute_vetoes(empty)) == \
-        Assessment.INSUFFICIENT_EVIDENCE
-
+    assert [(v.code, v.severity) for v in compute_vetoes(empty)] == [
+        ("no_core_evidence", "block")]
     short = make_pack(bars=make_bars(sessions=40))
-    vetoes = compute_vetoes(short)
-    assert "short_price_history" in {v.code for v in vetoes}
-    assert enforce(Assessment.SUPPORTIVE, vetoes) == Assessment.MIXED
-    assert enforce(Assessment.ADVERSE, vetoes) == Assessment.ADVERSE  # caps only lower
+    assert ("short_price_history", "cap") in {(v.code, v.severity)
+                                               for v in compute_vetoes(short)}
 
 
 def test_healthy_pack_has_no_capping_vetoes():
@@ -94,3 +93,4 @@ def test_price_levels_are_per_share_and_52w_needs_a_year():
     assert "high_52w" not in short and "from_52w_high" not in short
     full = {m.name: m for m in technical_metrics(make_bars(sessions=260))}
     assert "high_52w" in full
+    assert "volatility_1y" not in short and full["volatility_1y"].label.endswith("(250 sessions)")

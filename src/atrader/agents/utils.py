@@ -17,9 +17,10 @@ from atrader.contracts import (
     DebateOutput,
     DebateTurn,
     EvidencePack,
+    NewsAnalystOutput,
 )
 from atrader.llm import LLM, GatewayError, QuotaExhausted
-from atrader.verification import verify_claims
+from atrader.verification import verify_adjustments, verify_claims, verify_events
 
 RULES = """\
 Rules for every aTrader agent:
@@ -59,8 +60,9 @@ def skipped_report(agent: str, reason: str) -> dict[str, dict[str, AgentReport]]
     return {"analyst_reports": {agent: report}}
 
 
-def analyst_report(agent: str, pack: EvidencePack, output: AnalystOutput | None,
-                   call_ids: list[str], error: str | None) -> dict[str, dict[str, AgentReport]]:
+def analyst_report(agent: str, pack: EvidencePack,
+                   output: AnalystOutput | NewsAnalystOutput | None, call_ids: list[str],
+                   error: str | None) -> dict[str, dict[str, AgentReport]]:
     if output is None:
         report = AgentReport(agent=agent, roles=[agent], status=AgentStatus.FAILED,
                              error=error, model_call_ids=call_ids)
@@ -72,16 +74,21 @@ def analyst_report(agent: str, pack: EvidencePack, output: AnalystOutput | None,
             stance=output.stance, summary=output.summary,
             claims=verify_claims(output.claims, pack, agent, agent.removesuffix("_analyst")),
             gaps=output.gaps, model_call_ids=call_ids,
+            score_adjustments=verify_adjustments(output.score_adjustments, pack, agent)
+            if isinstance(output, AnalystOutput) else [],
+            events=verify_events(output.events, pack)
+            if isinstance(output, NewsAnalystOutput) else [],
         )
     return {"analyst_reports": {agent: report}}
 
 
 def debate_turn(side: Literal["bull", "bear"], state: AgentState, output: DebateOutput | None,
                 call_ids: list[str], error: str | None) -> dict[str, list[DebateTurn]]:
+    # Bull and bear speak in the same step, so a turn's number comes from its round.
     turns = state.get("debate", [])
-    index = len(turns) + 1
-    phase: Literal["opening", "rebuttal"] = (
-        "rebuttal" if any(t.side == side for t in turns) else "opening")
+    round_index = sum(1 for t in turns if t.side == side)
+    index = 2 * round_index + (1 if side == "bull" else 2)
+    phase: Literal["opening", "rebuttal"] = "rebuttal" if round_index else "opening"
     if output is None:
         turn = DebateTurn(turn_index=index, side=side, phase=phase, status=AgentStatus.FAILED,
                           error=error, model_call_ids=call_ids)
@@ -107,4 +114,5 @@ def debate_instruction(side: str, state: AgentState) -> str:
     if any(t.side == side for t in state.get("debate", [])):
         return ("Rebut the other side's latest arguments by claim ID and refine your case. "
                 "Do not repeat earlier points unless you add evidence.")
-    return "Open the debate with your side's case."
+    return ("Open the debate with your side's case. The other side is writing its opening "
+            "at the same time; you will rebut each other in the next round, if there is one.")
