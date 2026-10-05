@@ -19,6 +19,7 @@ from atrader.graph.research_graph import MODES, ResearchGraph, RunCancelled, Run
 from atrader.graph.run_registry import RunRegistry
 from atrader.llm import QuotaExhausted
 from atrader.llm.usage import UsageLedger
+from atrader.timeutil import now_utc
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,8 @@ class LiveRun:
                     self._finished[node] += 1
                 else:
                     self._failed.add(node)
-            self.events.append({"id": len(self.events) + 1, "type": kind, **fields})
+            self.events.append({"id": len(self.events) + 1, "type": kind,
+                                "at": now_utc().isoformat(), **fields})
             self._changed.notify_all()
 
     def finish(self, status: str, **fields: Any) -> None:

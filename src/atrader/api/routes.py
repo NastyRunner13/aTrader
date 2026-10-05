@@ -209,9 +209,11 @@ def resume_run(run_id: str, svc: Svc) -> dict[str, Any]:
 def run_events(
     run_id: str, svc: Svc,
     last_event_id: Annotated[int, Header(alias="Last-Event-ID", ge=0)] = 0,
+    after: Annotated[int, Query(ge=0)] = 0,
 ) -> StreamingResponse:
     """Server-sent events: `status`, `progress`, `node` and a final `end`. A client that
-    reconnects with `Last-Event-ID` receives only what it missed."""
+    reconnects with `Last-Event-ID` (or `?after=`, for a fresh `EventSource`) receives
+    only what it missed."""
     snapshot = _found(lambda: svc.runs.snapshot(run_id))
     live = svc.runs.live(run_id)
     if live is None:  # finished before this server started: only the outcome is known
@@ -220,7 +222,7 @@ def run_events(
         return StreamingResponse(iter([_sse(end)]), media_type="text/event-stream")
 
     def stream() -> Iterator[str]:
-        cursor = last_event_id
+        cursor = max(last_event_id, after)
         while True:
             events, active = live.wait_for(cursor, KEEP_ALIVE_S)
             for event in events:

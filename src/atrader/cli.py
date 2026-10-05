@@ -5,13 +5,15 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import tempfile
 from datetime import date
+from pathlib import Path
 
 import typer
 import uvicorn
 
 from atrader.api.app import create_app
-from atrader.config import get_settings
+from atrader.config import Settings, get_settings
 from atrader.contracts import Mode
 from atrader.data.http import PoliteClient
 from atrader.data.providers.nse_bhavcopy import ingest_sessions
@@ -96,6 +98,17 @@ def serve(
     settings = get_settings()
     uvicorn.run(create_app(settings), host=host or settings.api_host,
                 port=port or settings.api_port, log_level="info")
+
+
+@app.command()
+def openapi(out: Path = typer.Argument(Path("apps/web/openapi.json"))) -> None:
+    """Write the web API's OpenAPI schema; the web app's TypeScript types come from it."""
+    # A throwaway data directory, so exporting never touches real runs or reports.
+    with tempfile.TemporaryDirectory() as scratch:
+        root = Path(scratch)
+        app_ = create_app(Settings(_env_file=None, data_dir=root, reports_dir=root / "reports"))
+        out.write_text(json.dumps(app_.openapi(), indent=2) + "\n", encoding="utf-8")
+    typer.echo(f"wrote {out}")
 
 
 @app.command()

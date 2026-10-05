@@ -133,6 +133,7 @@ def test_events_replay_every_step_and_end_with_the_outcome(client):
         lines = [line for line in response.iter_lines() if line.startswith("data: ")]
     events = [json.loads(line.removeprefix("data: ")) for line in lines]
     assert [e["id"] for e in events] == list(range(1, len(events) + 1))
+    assert all(e["at"].endswith("+00:00") for e in events)  # stamped by the server
     started = {e["node"] for e in events if e["type"] == "node" and e["phase"] == "start"}
     assert {"data_steward", "market_analyst", "bull_researcher", "portfolio_manager",
             "finalize"} <= started
@@ -142,6 +143,10 @@ def test_events_replay_every_step_and_end_with_the_outcome(client):
                        headers={"Last-Event-ID": str(len(events) - 1)}) as response:
         replay = [line for line in response.iter_lines() if line.startswith("data: ")]
     assert len(replay) == 1 and json.loads(replay[0].removeprefix("data: "))["type"] == "end"
+
+    with client.stream("GET", f"/v1/runs/{run['run_id']}/events",
+                       params={"after": len(events)}) as response:
+        assert [line for line in response.iter_lines() if line.startswith("data: ")] == []
 
 
 def test_dry_run_reports_are_flagged(client):
@@ -252,6 +257,14 @@ def test_changes_from_other_origins_are_refused(client):
     assert "access-control-allow-origin" not in other.headers
     allowed = client.get("/v1/status", headers={"Origin": ORIGIN})
     assert allowed.headers["access-control-allow-origin"] == ORIGIN
+
+
+def test_the_schema_describes_responses_as_sent(client):
+    schemas = client.get("/v1/openapi.json").json()["components"]["schemas"]
+    assert {"drivers", "up_if", "capped_by"} <= set(schemas["HorizonView"]["required"])
+    assert "bars" not in schemas["EvidencePack"]["properties"]  # served by /bars instead
+    assert "closes" not in schemas["IndexSeries"]["properties"]
+    assert schemas["RunBody"]["required"] == ["symbol"]  # a request keeps its defaults
 
 
 def test_unknown_host_names_are_refused(client):
