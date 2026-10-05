@@ -1,6 +1,6 @@
 # aTrader — Indian equity research agents
 
-Status (5 October 2026): **first working version, with a signal card.** A Python + LangGraph command-line app researches one NSE-listed company. It runs on official NSE data, uses agents structured like [TradingAgents](https://github.com/TauricResearch/TradingAgents), cites evidence for each claim and calls only free OpenRouter models. Each run ends in a one-screen **signal card**: a 0–100 score and signal for 1 month, 6 months and 2 years, scores by area, pros and cons, price ranges, **price levels** (support and resistance zones, moving averages, anchored VWAPs, the heaviest-traded band) and the **closes that would flip each signal**. FastAPI and Next.js come later (see [09](docs/09-validation-and-roadmap.md)).
+Status (5 October 2026): **first working version, with a signal card and a local web app.** A Python + LangGraph command-line app researches one NSE-listed company. It runs on official NSE data, uses agents structured like [TradingAgents](https://github.com/TauricResearch/TradingAgents), cites evidence for each claim and calls only free OpenRouter models. Each run ends in a one-screen **signal card**: a 0–100 score and signal for 1 month, 6 months and 2 years, scores by area, pros and cons, price ranges, **price levels** (support and resistance zones, moving averages, anchored VWAPs, the heaviest-traded band) and the **closes that would flip each signal**. A local FastAPI server and a Next.js web app sit on top of it (see Web API and Web app below).
 
 The scores are experimental: the rules and weights are starting values that have not been validated against history yet. This is research, not investment advice.
 
@@ -91,6 +91,28 @@ finalize              code: the scorecard, signals, price ranges, vetoes
 | `GET /v1/reports/{id}/export?format=card\|details\|json` | Download a report |
 | `GET`, `PUT`, `DELETE /v1/watchlist` | Followed companies with their last close and latest signals |
 
+## Web app
+
+`apps/web` is a Next.js app (TypeScript, Tailwind, TradingView Lightweight Charts) that reads the API above: a watchlist, a company page with the price chart and its levels, the signal card with an evidence drawer, run history, and a live run page. It can start runs, always as an explicit choice that shows its cost, and never on page load. Design context is in [PRODUCT.md](PRODUCT.md) and [DESIGN.md](DESIGN.md).
+
+```bash
+uv run atrader serve
+```
+
+```bash
+npm --prefix apps/web install
+```
+
+```bash
+npm --prefix apps/web run dev
+```
+
+Then open <http://localhost:3000>. Notes:
+
+- The API types come from the API itself: after changing an endpoint, run `uv run atrader openapi apps/web/openapi.json`, then `npm --prefix apps/web run types`.
+- The dev and build scripts use webpack (`--webpack`), because Turbopack refuses a `node_modules` junction.
+- This repository sits in OneDrive, which struggles with thousands of package files. `npm run relink` (in `apps/web`) moves `node_modules` and `.next` to `%LOCALAPPDATA%\atrader\web` and leaves a junction; run it after every `npm install`, which replaces the junction with a real folder.
+
 ## Code layout
 
 The agents follow TradingAgents' layout: one file per agent, each with a `create_<agent>(llm)` factory that returns a graph node.
@@ -115,6 +137,7 @@ src/atrader/
   verification/    claim, citation, score-adjustment and event checks
   report/          signal card, full-analysis Markdown and JSON
   api/             FastAPI app: search, bars, runs (queue, events, cancel), reports, watchlist
+apps/web/          Next.js web app (watchlist, company, report, runs)
 ```
 
 Run the tests with `uv run pytest` and lint with `uv run ruff check src tests`. Tests are offline and use synthetic data.

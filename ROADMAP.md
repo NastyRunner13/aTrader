@@ -56,7 +56,7 @@ Status key: ✅ done · 🟡 partial · ⬜ not started · ⏸ deferred by decis
 | ID | Feature | Priority | Status | What exists / what is missing |
 |---|---|---|---|---|
 | F01 | Company and listing search | P0 | 🟡 | NSE symbol/ISIN resolution and `atrader search`. Missing: BSE codes, symbol-change history |
-| F02 | Watchlists and saved reports | P0 | 🟡 | Reports saved with pack, cutoff and sources; run registry. Missing: watchlists |
+| F02 | Watchlists and saved reports | P0 | ✅ | Reports saved with pack, cutoff and sources; run registry; a watchlist in the web app with each company's last close and latest signals |
 | F03 | Daily price/volume history | P0 | ✅ | NSE bhavcopy, adjustment basis, holidays, last complete bar. Missing: user CSV import path |
 | F04 | Financial statements and key ratios | P0 | 🟡 | Quarterly P&L from XBRL, growth, margins. Missing: balance sheet, cash flow, bank/NBFC/insurer line items |
 | F05 | Annual reports and presentations | P0 | ⬜ | No PDF extraction yet |
@@ -82,9 +82,9 @@ Status key: ✅ done · 🟡 partial · ⬜ not started · ⏸ deferred by decis
 
 | ID | Feature | Priority | Status | What exists / what is missing |
 |---|---|---|---|---|
-| F23 | Report workspace and live progress | P0 | 🟡 | CLI progress and Markdown reports. Missing: FastAPI + Next.js workspace (deferred until reports prove useful) |
+| F23 | Report workspace and live progress | P0 | ✅ | FastAPI + Next.js workspace: search, signal card with evidence drawer, price chart with levels, run history, live run progress over server-sent events |
 | F24 | Free-only OpenRouter gateway | P0 | ✅ | Live-tested 2026-10-04: zero cost reported; the run cap held at 8 when a bad config produced empty answers; reasoning models get a bounded effort and output budget |
-| F25 | Resume, cancel, retry, partial result | P0 | 🟡 | Resume after quota pause, retry, repair, partial reports. Missing: cancel |
+| F25 | Resume, cancel, retry, partial result | P0 | ✅ | Resume after a quota pause, failure or cancel; retry, repair, partial reports; cancel stops new work (a model call already in flight still finishes) |
 | F26 | Evidence-grounded follow-up questions | P1 | ⬜ | |
 | F27 | Markdown/JSON export; print view | P0 | ✅ | Signal card (Markdown and terminal), full-analysis Markdown and JSON for every run |
 | F28 | Side-by-side comparison | P1 | ⬜ | |
@@ -98,7 +98,7 @@ Status key: ✅ done · 🟡 partial · ⬜ not started · ⏸ deferred by decis
 | F36 | Public / multi-user deployment | P2 cond. | ⏸ | Needs data rights and a SEBI review |
 | F37 | Broker execution | Out of scope | ⏸ | Not planned |
 
-**Tally (37 features):** 10 done, 11 partial, 11 not started, 5 deferred. Of the 25 first-release (P0) features, 10 are done, 11 partial and 4 not started (F05, F07, F12, F32).
+**Tally (37 features):** 13 done, 8 partial, 11 not started, 5 deferred. Of the 25 first-release (P0) features, 13 are done, 8 partial and 4 not started (F05, F07, F12, F32).
 
 ### Delivery stages (docs/09)
 
@@ -149,8 +149,9 @@ Ordered by dependency. Each milestone ends with something you can run.
 - [ ] Sector news and a fallback when GDELT rate-limits.
 
 ### M5 — Research workspace (F02, F22, F23, F25, F28)
-- [ ] Watchlists, compare with the previous report, and run cancel.
-- [ ] FastAPI backend and Next.js workspace, once reports are useful enough to read daily.
+- [x] Watchlists and run cancel (5 Oct 2026, with the web app).
+- [ ] Compare with the previous report.
+- [x] FastAPI backend and Next.js workspace (`atrader serve`, `apps/web`).
 
 ### M6 — Screening and forward testing (F29–F31, F33)
 - [ ] Deterministic screener over the stored bhavcopy universe.
@@ -178,5 +179,5 @@ F13 Reddit, F14 Hindi sources, F34–F35 depth and derivatives, and F36 public d
 - The 2-year base scenario still holds today's P/E and caps growth at 20%, so every fast grower gets close × 1.2² (+44%).
 - In `--dry-run`, model-call records are kept in memory only, so a resumed dry run lists only the calls made after resuming.
 - The issuer/listing split from docs/07 is collapsed onto the ISIN until BSE mapping arrives.
-- There is no `cancel` command yet. On Windows, stopping the terminal does not always stop the Python process, which can keep running until its call cap (this happened once on 4 October: 8 wasted calls, cap held).
+- Cancel (web app and API) stops new steps from starting; a model call already in flight still finishes. On Windows, closing a terminal does not always stop the Python process, which can keep running until its call cap (this happened once on 4 October: 8 wasted calls, cap held). Stop a run from the app instead.
 - `stealth/space-bunny-alpha` is zero-priced but not a `:free` route, so it needs `ATRADER_MODEL_ALLOWLIST`. Its provider is anonymous, and its data-retention terms could not be confirmed.

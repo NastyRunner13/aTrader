@@ -18,3 +18,9 @@ reports/
 Thumbs.db
 .vscode/
 .idea/
+
+# Web app
+apps/web/node_modules
+apps/web/.next
+apps/web/next-env.d.ts
+apps/web/*.tsbuildinfo
