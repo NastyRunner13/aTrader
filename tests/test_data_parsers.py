@@ -10,13 +10,18 @@ from pathlib import Path
 
 from atrader.contracts import StatementBasis
 from atrader.data.providers.gdelt_news import company_aliases, mentions_company
-from atrader.data.providers.nse_bhavcopy import parse_bhavcopy, parse_index_close
+from atrader.data.providers.nse_bhavcopy import (
+    parse_bhavcopy,
+    parse_delivery,
+    parse_index_close,
+)
 from atrader.data.providers.nse_filings import (
     FilingRef,
     parse_integrated_index,
     parse_legacy_index,
     select_filings,
 )
+from atrader.data.providers.nse_sectors import SECTOR_INDEX, parse_industries
 from atrader.data.providers.nse_shareholding import parse_shareholding
 from atrader.data.xbrl import parse_results_xbrl
 from atrader.formatting import format_value, indian_grouping
@@ -85,6 +90,32 @@ def test_index_close_parses_pe_and_dashes():
     rows = parse_index_close(text)
     assert rows[0][0] == "Nifty 50" and rows[0][5] == 22421.95 and rows[0][6] == 19.19
     assert rows[1][2] is None and rows[1][6] is None
+
+
+def test_delivery_file_parses_padded_cells_and_dashes():
+    text = ("SYMBOL, SERIES, DATE1, PREV_CLOSE, OPEN_PRICE, HIGH_PRICE, LOW_PRICE, LAST_PRICE, "
+            "CLOSE_PRICE, AVG_PRICE, TTL_TRD_QNTY, TURNOVER_LACS, NO_OF_TRADES, DELIV_QTY, "
+            "DELIV_PER\n"
+            "TESTCO, EQ, 01-Oct-2026, 8026.00, 8030.00, 8131.00, 7883.00, 7990.00, 7990.00, "
+            "8009.15, 463691, 37137.73, 48255, 264765, 57.10\n"
+            "NODELIV, EQ, 01-Oct-2026, 10, 10, 10, 10, 10, 10, 10, 500, 0.05, 3, -, -\n"
+            "GSEC, GS, 01-Oct-2026, 100, 100, 100, 100, 100, 100, 100, 1, 0.01, 1, 1, 100\n")
+    rows = list(parse_delivery(text))
+    assert [r.symbol for r in rows] == ["TESTCO", "NODELIV"]
+    assert rows[0].session == date(2026, 10, 1) and rows[0].series == "EQ"
+    assert rows[0].traded_qty == 463691 and rows[0].delivered_qty == 264765
+    assert rows[0].delivery_pct == 57.10
+    assert rows[1].delivered_qty is None and rows[1].delivery_pct is None
+
+
+def test_industry_list_maps_isins_to_sector_indices():
+    text = ("Company Name,Industry,Symbol,Series,ISIN Code\n"
+            "Polycab India Ltd.,Capital Goods,POLYCAB,EQ,INE455K01017\n"
+            "Some Textile Ltd.,Textiles,TEXCO,EQ,INE000X01011\n")
+    industries = parse_industries(text)
+    assert industries == {"INE455K01017": "Capital Goods", "INE000X01011": "Textiles"}
+    assert SECTOR_INDEX["Capital Goods"] == "Nifty Capital Goods"
+    assert "Textiles" not in SECTOR_INDEX  # no close-fitting index: no comparison
 
 
 def test_nse_timestamps_are_ist():

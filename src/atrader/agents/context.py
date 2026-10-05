@@ -17,9 +17,13 @@ from atrader.formatting import format_value, rupees
 
 def company(pack: EvidencePack) -> str:
     listing = pack.listing
+    sector = pack.index("sector")
+    industry = (f" NSE industry: {pack.industry}" + (f", compared with {sector.name}."
+                                                      if sector else ".")
+                if pack.industry else "")
     return (f"## Company\n{listing.name}, {listing.exchange}: {listing.symbol}, ISIN "
-            f"{listing.isin}. Knowledge cutoff {pack.cutoff} (IST). The outlook covers three "
-            "horizons: 1 month, 6 months and 2 years.")
+            f"{listing.isin}.{industry} Knowledge cutoff {pack.cutoff} (IST). The outlook "
+            "covers three horizons: 1 month, 6 months and 2 years.")
 
 
 def financials(pack: EvidencePack) -> str:
@@ -100,6 +104,8 @@ def all_evidence(pack: EvidencePack) -> str:
         announcements(pack),
         news(pack),
         metrics(pack, "technical", "pattern", "liquidity", title="Technicals and liquidity"),
+        metrics(pack, "flow", title="Volume and delivery"),
+        metrics(pack, "level", title="Price levels (past turning points and volume)"),
         coverage(pack),
     )
 
@@ -153,7 +159,8 @@ def base_scores(state: AgentState, *pillars: Pillar) -> str:
             lines.append(f"### {pillar.value}: not scored ({score.note if score else 'no data'})")
             continue
         lines.append(f"### {pillar.value}: {score.score}/100, confidence {score.confidence}")
-        lines += [f"- {f.points:+.1f} {f.label} {_ids(f.evidence_ids)}" for f in score.factors]
+        lines += [f"- {f.points:+.1f} {f'({f.group}) ' if f.group else ''}{f.label} "
+                  f"{_ids(f.evidence_ids)}" for f in score.factors]
         if score.note:
             lines.append(f"Caveat: {score.note}")
     return "\n".join(lines)
@@ -171,7 +178,7 @@ def draft_scorecard(state: AgentState) -> str:
         if p.score is None:
             lines.append(f"- {p.pillar.value}: not scored ({p.note})")
             continue
-        top = sorted(p.factors, key=lambda f: -abs(f.points))[:3]
+        top = sorted((f for f in p.factors if f.kind == "rule"), key=lambda f: -abs(f.points))[:3]
         adjusted = (f"; the analyst adjusted it {p.adjustment:+d}: {p.adjustment_reason}"
                     if p.adjustment else "")
         lines.append(f"- {p.pillar.value}: {p.score} (code {p.base}{adjusted}). Main factors: "

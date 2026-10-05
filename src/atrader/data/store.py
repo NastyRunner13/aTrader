@@ -1,8 +1,8 @@
 """Local SQLite store for ingested market data.
 
-Kept deliberately small: end-of-day bars (all NSE equities, so the screener can reuse
-them later) and which sessions were ingested. Filings, announcements and news are
-fetched per run through the HTTP cache.
+Kept deliberately small: end-of-day bars and delivery positions (all NSE equities, so
+the screener can reuse them later), index closes, and which sessions were ingested.
+Filings, announcements and news are fetched per run through the HTTP cache.
 """
 
 from __future__ import annotations
@@ -12,8 +12,12 @@ from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from atrader.contracts import PriceBar
+
+if TYPE_CHECKING:
+    from atrader.data.providers.nse_bhavcopy import DeliveryRow
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS ingested_sessions (
@@ -50,7 +54,24 @@ CREATE TABLE IF NOT EXISTS index_bars (
     pe REAL, pb REAL, div_yield REAL,
     PRIMARY KEY (index_name, session)
 );
+CREATE TABLE IF NOT EXISTS delivery_sessions (
+    session     TEXT PRIMARY KEY,
+    status      TEXT NOT NULL,
+    retrieved_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS delivery (
+    symbol      TEXT NOT NULL,
+    series      TEXT NOT NULL,
+    session     TEXT NOT NULL,
+    traded_qty  INTEGER NOT NULL,
+    delivered_qty INTEGER,
+    delivery_pct REAL,
+    PRIMARY KEY (symbol, series, session)
+);
 """
+
+_SESSION_TABLES = {"equity": "ingested_sessions", "index": "index_sessions",
+                   "delivery": "delivery_sessions"}
 
 
 class MarketStore:
@@ -72,7 +93,7 @@ class MarketStore:
     # --- sessions ------------------------------------------------------------------------
 
     def known_sessions(self, dataset: str = "equity") -> dict[date, str]:
-        table = "ingested_sessions" if dataset == "equity" else "index_sessions"
+        table = _SESSION_TABLES[dataset]
         with self._connect() as conn:
             rows = conn.execute(f"SELECT session, status FROM {table}").fetchall()
         return {date.fromisoformat(s): status for s, status in rows}
@@ -94,6 +115,14 @@ class MarketStore:
                 (session.isoformat(), status, retrieved_at.isoformat()),
             )
 
+    def record_delivery_session(self, session: date, status: str,
+                                retrieved_at: datetime) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO delivery_sessions VALUES (?, ?, ?)",
+                (session.isoformat(), status, retrieved_at.isoformat()),
+            )
+
     # --- bars ----------------------------------------------------------------------------
 
     def upsert_bars(self, rows: Iterable[tuple[str, str, str | None, PriceBar]]) -> int:
@@ -111,20 +140,31 @@ class MarketStore:
 
     def bars_for(self, isin: str, until: date, limit: int) -> list[PriceBar]:
         """Bars across the equity series a security can move between (EQ, BE, BZ).
-        A security trades in only one of them on a given session."""
+        A security trades in only one of them on a given session. The delivery file
+        has no ISIN, so its rows join on symbol, series and session."""
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT session, open, high, low, close, prev_close, volume, turnover, trades, "
-                "provider FROM price_bars WHERE isin = ? AND series IN ('EQ', 'BE', 'BZ') "
-                "AND session <= ? ORDER BY session DESC LIMIT ?",
+                "SELECT p.session, p.open, p.high, p.low, p.close, p.prev_close, p.volume, "
+                "p.turnover, p.trades, p.provider, d.delivery_pct FROM price_bars p "
+                "LEFT JOIN delivery d ON d.symbol = p.symbol AND d.series = p.series "
+                "AND d.session = p.session WHERE p.isin = ? AND p.series IN ('EQ', 'BE', 'BZ') "
+                "AND p.session <= ? ORDER BY p.session DESC LIMIT ?",
                 (isin, until.isoformat(), limit),
             ).fetchall()
         bars = [
             PriceBar(session=date.fromisoformat(r[0]), open=r[1], high=r[2], low=r[3], close=r[4],
-                     prev_close=r[5], volume=r[6], turnover_inr=r[7], trades=r[8], provider=r[9])
+                     prev_close=r[5], volume=r[6], turnover_inr=r[7], trades=r[8], provider=r[9],
+                     delivery_pct=r[10])
             for r in rows
         ]
         return list(reversed(bars))
+
+    def upsert_delivery(self, rows: Iterable[DeliveryRow]) -> int:
+        payload = [(r.symbol, r.series, r.session.isoformat(), r.traded_qty, r.delivered_qty,
+                    r.delivery_pct) for r in rows]
+        with self._connect() as conn:
+            conn.executemany("INSERT OR REPLACE INTO delivery VALUES (?,?,?,?,?,?)", payload)
+        return len(payload)
 
     def upsert_index_bars(
         self, rows: Iterable[tuple[str, date, float | None, float | None, float | None, float,

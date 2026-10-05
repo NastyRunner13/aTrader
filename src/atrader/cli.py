@@ -74,13 +74,13 @@ def resume(run_id: str) -> None:
 
 @app.command()
 def ingest(sessions: int = typer.Option(320, help="Weekdays of history to download")) -> None:
-    """Download NSE bhavcopy and index files (first run takes a few minutes)."""
+    """Download NSE bhavcopy, index and delivery files (first run takes a few minutes)."""
     settings = get_settings()
     settings.ensure_dirs()
     with PoliteClient(settings.cache_dir, settings.http_min_interval_s) as client:
         result = ingest_sessions(client, MarketStore(settings.db_path), today_ist(), sessions)
-    typer.echo(f"downloaded {result.downloaded}, holidays {result.holidays}, "
-               f"already present {result.already_present}")
+    typer.echo(f"downloaded {result.downloaded}, delivery files {result.delivery_downloaded}, "
+               f"holidays {result.holidays}, already present {result.already_present}")
     for failure in result.failed or []:
         typer.secho(f"  failed {failure}", fg="yellow")
 

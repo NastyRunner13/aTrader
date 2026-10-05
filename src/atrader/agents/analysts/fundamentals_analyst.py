@@ -15,8 +15,9 @@ quarterly results (exchange XBRL) and the ratios Python computed from them.
 - Growth: revenue and profit, year on year for the same quarter, and quarter on quarter.
 - Earnings quality: margins, the share of profit from other income, exceptional items,
   finance costs.
-- Valuation: trailing P/E and market capitalisation where computed. Read the index P/E
-  as context only; different businesses are not directly comparable.
+- Valuation: trailing P/E and market capitalisation where computed. Compare the P/E
+  with the sector index P/E first (NSE's industry classification; a large company can
+  dominate its own sector index) and the Nifty 50 second, as context only.
 - Ownership: the promoter and public holding trend across quarters.
 - Note the reporting basis, audit status, restatements and missing periods.
 Do not call a trend from a single quarter.

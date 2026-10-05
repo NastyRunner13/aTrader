@@ -55,6 +55,9 @@ class PriceBar(BaseModel):
     volume: int = Field(ge=0)
     turnover_inr: float | None = None
     trades: int | None = None
+    # Share of the traded quantity marked for delivery rather than squared off the same
+    # day (NSE security-wise delivery position). A ratio, so split adjustment leaves it.
+    delivery_pct: float | None = None
     provider: str = "nse.bhavcopy"
     adjustment: Literal["unadjusted", "split_bonus_adjusted"] = "unadjusted"
 
@@ -107,7 +110,7 @@ class DerivedMetric(BaseModel):
     detail: str | None = None
     quality_flags: tuple[str, ...] = ()
     category: Literal["fundamental", "valuation", "technical", "liquidity", "pattern",
-                      "market"] = "fundamental"
+                      "market", "flow", "level"] = "fundamental"
 
 
 class Announcement(BaseModel):
@@ -148,6 +151,18 @@ class NewsItem(BaseModel):
     source: SourceRef
 
 
+class IndexSeries(BaseModel):
+    """An NSE index the stock is compared with: daily closes and its published P/E."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    role: Literal["benchmark", "sector"]
+    closes: tuple[tuple[date, float], ...] = ()
+    pe: float | None = None
+    pe_as_of: date | None = None
+
+
 class CoverageEntry(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -171,6 +186,8 @@ class EvidencePack(BaseModel):
     shareholding: tuple[ShareholdingSnapshot, ...] = ()
     news: tuple[NewsItem, ...] = ()
     bars: tuple[PriceBar, ...] = ()
+    indices: tuple[IndexSeries, ...] = ()
+    industry: str | None = None  # NSE industry, today's classification (not point-in-time)
     coverage: tuple[CoverageEntry, ...] = ()
 
     @property
@@ -190,6 +207,9 @@ class EvidencePack(BaseModel):
 
     def coverage_for(self, category: str) -> CoverageEntry | None:
         return next((c for c in self.coverage if c.category == category), None)
+
+    def index(self, role: Literal["benchmark", "sector"]) -> IndexSeries | None:
+        return next((i for i in self.indices if i.role == role), None)
 
     @property
     def has_core_evidence(self) -> bool:

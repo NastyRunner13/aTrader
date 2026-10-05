@@ -106,5 +106,18 @@ Tested from the development machine with plain HTTPS requests, no login, at abou
 | Announcements | `www.nseindia.com/api/corporate-announcements` | Category, summary, timestamp, attachment PDF. Order wins are tagged "Bagging/Receiving of orders/contracts", with the amount only in the PDF. | `nse_announcements.py` |
 | Shareholding | `www.nseindia.com/api/corporate-share-holdings-master` | Promoter/public % per quarter with broadcast time; pledges not in this summary | `nse_shareholding.py` |
 | News discovery | GDELT DOC 2.0 | Enforces one request per 5 seconds | `gdelt_news.py` |
+| Delivery position (added 5 Oct) | `nsearchives.nseindia.com/products/content/sec_bhavdata_full_DDMMYYYY.csv` | Per stock and day: traded quantity, delivered quantity, delivery %. Header and cells are padded with spaces; `-` where nothing was reported. No ISIN, so rows join on symbol, series and session. | `nse_bhavcopy.py` |
+| Industry classification (added 5 Oct) | `nsearchives.nseindia.com/content/indices/ind_niftytotalmarket_list.csv` | About 755 stocks (Nifty 500 + Microcap 250) with NSE's industry. Today's classification, not point-in-time. The industry maps to a sector index whose P/E and closes come from the index file above. | `nse_sectors.py` |
+
+Checked on 5 October 2026 and **not built yet**:
+
+| Dataset | Route | Result |
+| --- | --- | --- |
+| FII/DII cash flows | `www.nseindia.com/api/fiidiiTradeReact` | Works; market-wide net buy/sell for the latest day only, so history must be collected daily. Never a per-stock figure. |
+| Participant-wise open interest | `nsearchives.nseindia.com/content/nsccl/fao_participant_oi_DDMMYYYY.csv` | Works; FII/DII/client/pro long and short contracts in index and stock futures and options |
+| F&O bhavcopy | `content/fo/BhavCopy_NSE_FO_0_0_0_YYYYMMDD_F_0000.csv.zip` | Works; open interest and its change per contract (price/OI build-up for F&O stocks) |
+| Bulk and block deals | `content/equities/bulk.csv`, `block.csv` | Work for the latest day only; `api/historical/bulk-deals` returned 503 |
+| Shareholding detail | the `xbrl` link in each shareholding-master row (`SHP_*.xml`) | Has FPI category I/II, mutual fund, insurance and pledge contexts: the per-stock, quarterly view of FII and DII holdings |
+| Quote API | `www.nseindia.com/api/quote-equity` | 403; not usable without a browser session |
 
 The `www.nseindia.com/api/*` endpoints are unofficial website APIs. They answered without session cookies on the test day, but can change or start refusing at any time; coverage then shows `access_blocked` rather than failing the run.

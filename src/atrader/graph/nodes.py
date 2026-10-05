@@ -2,6 +2,7 @@
 scorecard at the end."""
 
 from atrader.agents.state import AgentState
+from atrader.analytics.flips import signal_flips
 from atrader.analytics.scoring import base_scores, build_scorecard, score_pillars
 from atrader.analytics.vetoes import compute_vetoes
 from atrader.contracts import AgentStatus, Mode
@@ -24,14 +25,20 @@ def debate_round_node(state: AgentState):
 
 def finalize_node(state: AgentState):
     """Build the scorecard: code scores plus the analysts' verified adjustments and news
-    ratings, horizon weights, the portfolio manager's ±5, then the vetoes."""
+    ratings, horizon weights, the portfolio manager's ±5, then the vetoes. Last, the
+    price levels get the closes that would flip each signal."""
     pack = state.get("pack")
     if pack is None:
         return {"scorecard": None}
-    pillars = score_pillars(state.get("base_scores", {}), state.get("analyst_reports", {}))
+    reports = state.get("analyst_reports", {})
+    vetoes = state.get("vetoes", [])
+    pillars = score_pillars(state.get("base_scores", {}), reports)
     synthesis = state.get("final_synthesis")
     notes = synthesis.horizons if synthesis and synthesis.status == AgentStatus.COMPLETED else []
-    model_adjusted = state["request"].mode != Mode.DATA_ONLY and bool(
-        state.get("analyst_reports"))
-    return {"scorecard": build_scorecard(pack, pillars, state.get("vetoes", []), notes,
-                                         model_adjusted=model_adjusted)}
+    model_adjusted = state["request"].mode != Mode.DATA_ONLY and bool(reports)
+    card = build_scorecard(pack, pillars, vetoes, notes, model_adjusted=model_adjusted)
+    if card.levels is not None:
+        flips = signal_flips(pack, card, reports, vetoes, notes)
+        card = card.model_copy(update={"levels": card.levels.model_copy(
+            update={"flips": flips})})
+    return {"scorecard": card}

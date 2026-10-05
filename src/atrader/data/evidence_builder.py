@@ -10,20 +10,20 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from datetime import date
-from typing import Protocol
+from typing import Literal, Protocol
 
-from atrader.analytics.fundamentals import fundamental_metrics
-from atrader.analytics.patterns import detect_patterns
+from atrader.analytics.flows import MIN_SESSIONS as MIN_DELIVERY_SESSIONS
+from atrader.analytics.flows import WINDOW as FLOW_WINDOW
+from atrader.analytics.metrics import number, pack_metrics, resolve_metric_ids
 from atrader.analytics.prices import split_bonus_adjust
-from atrader.analytics.technicals import technical_metrics
 from atrader.config import Settings
 from atrader.contracts import (
     Announcement,
     Coverage,
     CoverageEntry,
-    DerivedMetric,
     EvidencePack,
     FinancialFact,
+    IndexSeries,
     Listing,
     NewsItem,
     PriceBar,
@@ -32,7 +32,13 @@ from atrader.contracts import (
     SourceRef,
 )
 from atrader.data.http import FetchError, PoliteClient
-from atrader.data.providers import gdelt_news, nse_announcements, nse_bhavcopy, nse_shareholding
+from atrader.data.providers import (
+    gdelt_news,
+    nse_announcements,
+    nse_bhavcopy,
+    nse_sectors,
+    nse_shareholding,
+)
 from atrader.data.providers.nse_filings import FilingRef, list_result_filings, select_filings
 from atrader.data.providers.nse_instruments import InstrumentMaster
 from atrader.data.store import MarketStore
@@ -46,6 +52,8 @@ MAX_ANNOUNCEMENTS = 25
 MAX_SHAREHOLDING = 4
 MAX_NEWS = 20
 BENCHMARK = "Nifty 50"
+
+__all__ = ["EvidenceSource", "NseEvidenceBuilder", "resolve_metric_ids"]
 
 
 class EvidenceSource(Protocol):
@@ -83,6 +91,12 @@ class NseEvidenceBuilder:
         bars, price_coverage = self._prices(listing, cutoff)
         coverage.extend(price_coverage)
 
+        self._progress("sector")
+        industry, sector, sector_coverage = self._sector(listing, cutoff)
+        coverage.append(sector_coverage)
+        benchmark = self._index_series(BENCHMARK, "benchmark", cutoff)
+        indices = [i for i in (benchmark, sector) if i is not None]
+
         self._progress("financial results")
         facts, result_coverage = self._financials(listing, cutoff)
         coverage.append(result_coverage)
@@ -106,18 +120,19 @@ class NseEvidenceBuilder:
                                       detail="Reddit access is disabled until approved access "
                                              "and permitted processing are confirmed."))
 
-        facts = _number(facts, "F")
-        metrics = self._metrics(bars, facts, cutoff)
+        facts = number(facts, "F")
         return EvidencePack(
             listing=listing,
             cutoff=cutoff,
             built_at=now_utc(),
             facts=tuple(facts),
-            metrics=tuple(metrics),
-            announcements=tuple(_number(announcements, "A")),
-            shareholding=tuple(_number(shareholding, "S")),
-            news=tuple(_number(news, "N")),
+            metrics=tuple(pack_metrics(bars, facts, indices)),
+            announcements=tuple(number(announcements, "A")),
+            shareholding=tuple(number(shareholding, "S")),
+            news=tuple(number(news, "N")),
             bars=tuple(bars),
+            indices=tuple(indices),
+            industry=industry,
             coverage=tuple(coverage),
         )
 
@@ -144,12 +159,60 @@ class NseEvidenceBuilder:
                 f"{e.session} (x{e.factor:.4f})" for e in events)
         entries = [CoverageEntry(category="prices", status=status, detail=detail,
                                  as_of=bars[-1].session)]
+        recent = bars[-FLOW_WINDOW:]
+        delivered = sum(1 for b in recent if b.delivery_pct is not None)
+        entries.append(CoverageEntry(
+            category="delivery",
+            status=(Coverage.AVAILABLE if delivered == len(recent) else Coverage.PARTIAL
+                    if delivered >= MIN_DELIVERY_SESSIONS else Coverage.MISSING),
+            detail=f"NSE delivery position for {delivered} of the last {len(recent)} sessions",
+            as_of=next((b.session for b in reversed(bars) if b.delivery_pct is not None),
+                       None)))
         benchmark = self._store.index_closes(BENCHMARK, cutoff, 2)
         entries.append(CoverageEntry(
             category="benchmark", status=Coverage.AVAILABLE if benchmark else Coverage.MISSING,
             detail=f"{BENCHMARK} daily closes (price index)",
             as_of=benchmark[-1][0] if benchmark else None))
         return bars, entries
+
+    def _index_series(self, name: str, role: Literal["benchmark", "sector"],
+                      cutoff: date) -> IndexSeries | None:
+        closes = self._store.index_closes(name, cutoff,
+                                          self._settings.price_history_sessions + 10)
+        if not closes:
+            return None
+        try:
+            pe_session, pe = self._store.latest_index_valuation(name, cutoff)
+        except LookupError:
+            pe_session, pe = None, None
+        return IndexSeries(name=name, role=role, closes=tuple(closes), pe=pe,
+                           pe_as_of=pe_session if pe is not None else None)
+
+    def _sector(self, listing: Listing, cutoff: date) -> tuple[str | None, IndexSeries | None,
+                                                               CoverageEntry]:
+        try:
+            industries = nse_sectors.fetch_industries(self._client)
+        except (FetchError, ValueError) as exc:
+            return None, None, CoverageEntry(category="sector", status=Coverage.ACCESS_BLOCKED,
+                                             detail=str(exc))
+        industry = industries.get(listing.isin)
+        if industry is None:
+            return None, None, CoverageEntry(
+                category="sector", status=Coverage.MISSING,
+                detail="Not in the Nifty Total Market list, so no NSE industry to compare with.")
+        index_name = nse_sectors.SECTOR_INDEX.get(industry)
+        series = self._index_series(index_name, "sector", cutoff) if index_name else None
+        if series is None:
+            reason = (f"no stored closes for {index_name}" if index_name
+                      else "no close-fitting NSE sector index")
+            return industry, None, CoverageEntry(category="sector", status=Coverage.PARTIAL,
+                                                 detail=f"NSE industry {industry}; {reason}.")
+        pe = (f"P/E {series.pe:.1f}x on {series.pe_as_of}" if series.pe is not None
+              else "no published P/E")
+        return industry, series, CoverageEntry(
+            category="sector", status=Coverage.AVAILABLE, as_of=series.closes[-1][0],
+            detail=f"NSE industry {industry} (today's classification), compared with "
+                   f"{series.name}: {len(series.closes)} sessions, {pe}")
 
     def _financials(self, listing: Listing, cutoff: date) -> tuple[list[FinancialFact],
                                                                   CoverageEntry]:
@@ -264,41 +327,6 @@ class NseEvidenceBuilder:
                    f"{self._settings.news_lookback_days} days name the company "
                    f"({', '.join(aliases)}); headline metadata only, no article text",
             as_of=cutoff)
-
-    def _metrics(self, bars: list[PriceBar], facts: list[FinancialFact],
-                 cutoff: date) -> list[DerivedMetric]:
-        benchmark = self._store.index_closes(BENCHMARK, cutoff, len(bars) + 10) if bars else []
-        metrics = technical_metrics(bars, benchmark, BENCHMARK) + detect_patterns(bars)
-        last_close = bars[-1].close if bars else None
-        metrics += fundamental_metrics(facts, last_close, bars[-1].session if bars else None)
-        try:
-            session, pe = self._store.latest_index_valuation(BENCHMARK, cutoff)
-            if pe is not None:
-                metrics.append(DerivedMetric(
-                    name="nifty50_pe", label=f"{BENCHMARK} P/E (as published by NSE)", value=pe,
-                    unit="x", as_of=session, formula="published by NSE indices",
-                    inputs=("nse.index_close",), category="market"))
-        except LookupError:
-            pass
-        return resolve_metric_ids(metrics)
-
-
-def resolve_metric_ids(metrics: list[DerivedMetric]) -> list[DerivedMetric]:
-    """Number metrics M1..Mn and replace `M:<name>` input placeholders with real IDs."""
-    numbered = _number(metrics, "M")
-    by_name = {m.name: m.evidence_id for m in numbered}
-    return [
-        m.model_copy(update={"inputs": tuple(
-            by_name.get(i[2:], i) if i.startswith("M:") else i for i in m.inputs)})
-        for m in numbered
-    ]
-
-
-def _number[T: (FinancialFact, DerivedMetric, Announcement, ShareholdingSnapshot, NewsItem)](
-    items: list[T], prefix: str,
-) -> list[T]:
-    return [item.model_copy(update={"evidence_id": f"{prefix}{i}"})
-            for i, item in enumerate(items, start=1)]
 
 
 def _merge_restatements(facts: list[FinancialFact]) -> list[FinancialFact]:

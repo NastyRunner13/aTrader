@@ -227,8 +227,13 @@ def test_data_only_mode_gives_a_code_only_scorecard(settings):
     assert card is not None and not card.model_adjusted
     assert card.pillar(Pillar.NEWS).score is None
     assert card.horizon(Horizon.ONE_MONTH).score is not None  # 70% of the weight is scored
+    assert card.levels is not None and card.levels.levels and card.levels.flips
     text = (settings.reports_dir / f"{report.report_id}.md").read_text(encoding="utf-8")
     assert "code-only scorecard" in text and "## Pros" in text  # pros from the rules
+    assert "## Price levels" in text and "**Last close**" in text and "Signal flips" in text
+    details = (settings.reports_dir / f"{report.report_id}-details.md").read_text(
+        encoding="utf-8")
+    assert "### Signal flips" in details and "_trend_" in details
 
 
 def test_quota_pause_resumes_without_repeating_work(settings, monkeypatch):

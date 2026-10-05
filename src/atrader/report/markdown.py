@@ -38,6 +38,7 @@ def _header(report: ResearchReport, card_name: str | None) -> str:
         "| | |",
         "|---|---|",
         f"| ISIN | {pack.listing.isin if pack else 'unresolved'} |",
+        f"| NSE industry | {(pack.industry if pack else None) or 'not classified'} |",
         "| Outlook | 1 month · 6 months · 2 years |",
         f"| Knowledge cutoff | {pack.cutoff if pack else request.cutoff or 'latest'} (IST) |",
         f"| Mode | {request.mode.value} |",
@@ -60,8 +61,8 @@ def _score_breakdown(report: ResearchReport) -> str:
                      else "not scored")]
         if p.score is not None:
             lines.append("- Starts at 50")
-        lines += [f"- {f.points:+.1f} {f.label} {_cite(f.evidence_ids, f.label)}".rstrip()
-                  for f in p.factors]
+        lines += [f"- {f.points:+.1f} {f'_{f.group}_ ' if f.group else ''}{f.label} "
+                  f"{_cite(f.evidence_ids, f.label)}".rstrip() for f in p.factors]
         if p.adjustment:
             lines.append(f"- {p.adjustment:+d} analyst adjustment: {p.adjustment_reason} "
                          f"{_cite(p.adjustment_evidence)}".rstrip())
@@ -72,6 +73,14 @@ def _score_breakdown(report: ResearchReport) -> str:
     lines += [f"| {h.horizon.label} | {h.score if h.score is not None else '—'} | "
               f"{h.signal.label} | {h.weight_covered}% | {h.manager_adjustment:+d} | "
               f"{', '.join(h.capped_by) or '—'} |" for h in card.horizons]
+    if card.levels and card.levels.flips:
+        lines += ["", "### Signal flips", "", "The next session's close at which each signal "
+                  "would change, at average volume with every other input unchanged "
+                  f"(searched to ±{card.levels.flips[0].searched_pct:.0f}%).", "",
+                  "| Horizon | Direction | Close | Signal there |", "|---|---|---|---|"]
+        lines += [f"| {f.horizon.label} | {f.direction} | "
+                  f"{format_value(f.price, 'INR/share') if f.price else 'no change'} | "
+                  f"{f.signal.label if f.signal else '—'} |" for f in card.levels.flips]
     return "\n".join(lines)
 
 

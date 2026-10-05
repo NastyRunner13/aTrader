@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -10,11 +11,17 @@ from atrader.contracts.common import Confidence, Horizon, Pillar, Signal
 
 
 class Factor(BaseModel):
-    """One rule's contribution to a pillar score, with the evidence it read."""
+    """One rule's contribution to a pillar score, with the evidence it read.
+
+    Rules in the same group read the same underlying move, so a group's total is
+    capped; the cap shows up as its own factor (`kind="cap"`) so the factors still add
+    up to the score."""
 
     label: str
     points: float
     evidence_ids: list[str] = Field(default_factory=list)
+    group: str | None = None
+    kind: Literal["rule", "cap"] = "rule"
 
 
 class PillarScore(BaseModel):
@@ -44,6 +51,35 @@ class PriceRange(BaseModel):
     evidence_ids: list[str] = Field(default_factory=list)
 
 
+class Level(BaseModel):
+    """A price the stock turned from or traded heavily at before. Not a target."""
+
+    kind: Literal["resistance", "support", "average", "vwap", "volume", "range"]
+    label: str
+    price: float
+    detail: str = ""
+    evidence_id: str
+
+
+class SignalFlip(BaseModel):
+    """The nearest next-session close that would change a horizon's signal, with
+    every other input held as it is."""
+
+    horizon: Horizon
+    direction: Literal["up", "down"]
+    price: float | None  # None: the signal did not change within the searched range
+    signal: Signal | None = None  # the signal at that price
+    searched_pct: float
+
+
+class PriceLevels(BaseModel):
+    close: float
+    as_of: date
+    levels: list[Level] = Field(default_factory=list)  # highest price first
+    support_break: Level | None = None  # a close below this breaks the nearest support
+    flips: list[SignalFlip] = Field(default_factory=list)
+
+
 class HorizonView(BaseModel):
     horizon: Horizon
     score: int | None
@@ -66,6 +102,7 @@ class Scorecard(BaseModel):
     pillars: list[PillarScore]
     horizons: list[HorizonView]
     model_adjusted: bool  # False for code-only scorecards (data_only runs)
+    levels: PriceLevels | None = None
 
     def pillar(self, pillar: Pillar) -> PillarScore:
         return next(p for p in self.pillars if p.pillar == pillar)

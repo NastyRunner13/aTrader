@@ -8,6 +8,7 @@ from atrader.analytics.scoring import (
     MAX_MANAGER_ADJUSTMENT,
     MIN_WEIGHT_COVERED,
     SIGNAL_BANDS,
+    TECHNICAL_GROUPS,
 )
 from atrader.contracts import (
     AgentStatus,
@@ -24,6 +25,12 @@ from atrader.formatting import indian_grouping, rupees
 
 EXPERIMENTAL = ("Experimental: the scoring rules and weights have not yet been validated "
                 "against history. Research, not investment advice.")
+LEVELS_NOTE = ("Levels are prices the stock turned from or traded heavily at before. They are "
+               "not entry, stop or target prices.")
+NO_SUPPORT = ("No support zone below the last close: no swing low of the past year sits under "
+              "today's price.")
+FLIP_NOTE = ("Signal flips: the next session's close at which a horizon's signal would change, "
+             "at average volume with every other input unchanged. Computed in code.")
 
 
 def render_card(report: ResearchReport, details_name: str | None = None) -> str:
@@ -39,6 +46,7 @@ def render_card(report: ResearchReport, details_name: str | None = None) -> str:
     if synthesis and synthesis.status == AgentStatus.COMPLETED and synthesis.summary:
         lines += ["", synthesis.summary]
     lines += ["", "## Scores by area", "", *_pillar_table(card)]
+    lines += _levels_section(card)
 
     pros, cons = _pros_cons(report)
     if pros:
@@ -83,6 +91,7 @@ def render_card_text(report: ResearchReport) -> str:
         score, confidence = (str(p.score), p.confidence.value) if scored else ("-", "-")
         lines.append(f"{p.pillar.label:<20}{score:>5}  {confidence:<8}"
                      f"{_weights(card, p.pillar)}")
+    lines += _levels_text(card)
     pros, cons = _pros_cons(report)
     if pros:
         lines += ["", "Pros", *[f"  + {r.statement}" for r in pros]]
@@ -153,7 +162,8 @@ def _pillar_table(card: Scorecard) -> list[str]:
 
 
 def _main_reasons(p: PillarScore) -> str:
-    top = [f for f in sorted(p.factors, key=lambda f: -abs(f.points)) if f.points][:2]
+    top = [f for f in sorted(p.factors, key=lambda f: -abs(f.points))
+           if f.points and f.kind == "rule"][:2]
     reasons = [f"{f.label} ({f.points:+.0f})" for f in top]
     if p.adjustment and p.adjustment_reason:
         reasons.append(f"analyst: {p.adjustment_reason}")
@@ -187,6 +197,85 @@ def _horizon_section(view: HorizonView) -> list[str]:
     return [lines[0], *[f"- {line}" for line in lines[1:]]]
 
 
+def _levels_section(card: Scorecard) -> list[str]:
+    levels = card.levels
+    if levels is None or not levels.levels:
+        return []
+    lines = ["", "## Price levels", "", f"Last close {rupees(levels.close)} on {levels.as_of}. "
+             f"{LEVELS_NOTE}", "", "| Level | Price | From close | Basis |", "|---|---|---|---|"]
+    close_row = f"| **Last close** | **{rupees(levels.close)}** | — | |"
+    for level in levels.levels:
+        if close_row and level.price < levels.close:
+            lines.append(close_row)
+            close_row = ""
+        basis = " ".join(part for part in (level.detail, f"[{level.evidence_id}]") if part)
+        lines.append(f"| {level.label} | {rupees(level.price)} | "
+                     f"{_from_close(level.price, levels.close)} | {basis} |")
+    if close_row:
+        lines.append(close_row)
+    notes = []
+    if brk := levels.support_break:
+        notes.append(f"A close below {rupees(brk.price)} ({_from_close(brk.price, levels.close)}) "
+                     f"breaks the nearest support: {brk.detail} [{brk.evidence_id}].")
+    elif not any(level.kind == "support" for level in levels.levels):
+        notes.append(NO_SUPPORT)
+    notes += [f"**{label}** ({now} now): {text}." for label, now, text in _flips(card)]
+    lines += ["", *[f"- {note}" for note in notes]] if notes else []
+    if levels.flips:
+        lines += ["", f"_{FLIP_NOTE}_"]
+    return lines
+
+
+def _levels_text(card: Scorecard, nearest: int = 6) -> list[str]:
+    levels = card.levels
+    if levels is None or not levels.levels:
+        return []
+    close = levels.close
+    nearby = sorted(levels.levels, key=lambda lv: abs(lv.price - close))[:nearest]
+    rows = [(lv.price, _from_close(lv.price, close), lv.label) for lv in nearby]
+    rows = sorted([*rows, (close, "", "last close")], key=lambda row: -row[0])
+    lines = ["", "Price levels (nearest; not targets)"]
+    lines += [f"  {rupees(price):>10}  {change:>7}  {label}" for price, change, label in rows]
+    if not any(level.kind == "support" for level in levels.levels):
+        lines.append(f"  {NO_SUPPORT}")
+    flips = _flips(card)
+    if flips:
+        lines += ["", "Signal flips (next close, everything else unchanged)"]
+        lines += [f"  {label}: {text}" for label, _, text in flips]
+    return lines
+
+
+def _flips(card: Scorecard) -> list[tuple[str, str, str]]:
+    """(horizon label, signal now, text) for each horizon with a flip search."""
+    if card.levels is None:
+        return []
+    out = []
+    for view in card.horizons:
+        flips = [f for f in card.levels.flips if f.horizon == view.horizon]
+        if not flips:
+            continue
+        if all(f.price is None for f in flips):
+            span = "±" if len(flips) == 2 else "+" if flips[0].direction == "up" else "-"
+            out.append((view.horizon.label, view.signal.label,
+                        f"no change within {span}{flips[0].searched_pct:.0f}%"))
+            continue
+        parts = []
+        for flip in flips:
+            up = flip.direction == "up"
+            if flip.price is None or flip.signal is None:
+                parts.append(f"no change {'up' if up else 'down'} to "
+                             f"{'+' if up else '-'}{flip.searched_pct:.0f}%")
+            else:
+                parts.append(f"{flip.signal.label} {'above' if up else 'below'} "
+                             f"{rupees(flip.price)} ({_from_close(flip.price, card.levels.close)})")
+        out.append((view.horizon.label, view.signal.label, "; ".join(parts)))
+    return out
+
+
+def _from_close(price: float, close: float) -> str:
+    return f"{(price / close - 1) * 100:+.1f}%"
+
+
 def _range_short(value: PriceRange | None) -> str:
     if value is None:
         return "—"
@@ -211,7 +300,8 @@ def _pros_cons(report: ResearchReport) -> tuple[list[Reason], list[Reason]]:
                                                                      or synthesis.cons):
         return synthesis.pros, synthesis.cons
     card = report.scorecard
-    factors: list[Factor] = [f for p in card.pillars for f in p.factors] if card else []
+    factors: list[Factor] = [f for p in card.pillars for f in p.factors
+                             if f.kind == "rule"] if card else []
     ranked = sorted(factors, key=lambda f: -abs(f.points))
     def reasons(positive: bool) -> list[Reason]:
         return [Reason(statement=f.label, evidence_ids=f.evidence_ids) for f in ranked
@@ -230,7 +320,10 @@ def _method() -> str:
     bands = ", ".join(f"{signal.label} from {floor}" for floor, signal in SIGNAL_BANDS)
     return (
         "Each area starts at 50 (no lean either way). Code rules add or subtract points for "
-        "what the metrics show, each citing its evidence. An analyst may move its own area "
+        "what the metrics show, each citing its evidence. Technical rules come in groups "
+        f"({', '.join(TECHNICAL_GROUPS)}) and each group's total is capped, so one price move "
+        "is not counted once per indicator that sees it. Valuation compares the P/E with the "
+        "stock's NSE sector index first and the Nifty 50 second. An analyst may move its own area "
         f"by up to ±{MAX_ANALYST_ADJUSTMENT} points with cited evidence; the news area comes "
         "from the news analyst's rated events. Each horizon weights the areas differently "
         "(the weight column above), the portfolio manager may move a horizon by up to "

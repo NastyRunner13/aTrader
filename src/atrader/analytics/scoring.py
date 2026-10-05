@@ -7,15 +7,20 @@ cited reason; the news area is built from the news analyst's event ratings inste
 Each horizon weights the areas differently, the portfolio manager may move a horizon
 by up to ±5, and the vetoes cap or block the result.
 
+Technical rules come in groups (trend, momentum, performance, breakout, flows). Rules
+in one group read the same underlying move, so each group's total is capped; otherwise
+one price drop would count once per indicator that sees it.
+
 The rules and weights are starting priors, not values fitted to returns. The
 `--cutoff` backtest (docs/09) is how they should be tuned.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-from math import log2
+from collections.abc import Iterable, Mapping
+from math import copysign, log2
 
+from atrader.analytics.levels import build_levels
 from atrader.analytics.ranges import MetricValue, known_metrics, price_range
 from atrader.analytics.vetoes import (
     MIN_SESSIONS_FOR_TECHNICALS,
@@ -38,7 +43,7 @@ from atrader.contracts import (
     Veto,
 )
 
-VERSION = "scorecard/1"
+VERSION = "scorecard/2"
 
 # Percent weight of each area per horizon. Short horizons lean on price action and
 # news; long ones on the business and the price paid for it.
@@ -54,6 +59,10 @@ WEIGHTS: dict[Horizon, dict[Pillar, int]] = {
 # The lowest score in each signal band.
 SIGNAL_BANDS = ((71, Signal.STRONG_BULLISH), (56, Signal.BULLISH), (45, Signal.NEUTRAL),
                 (30, Signal.BEARISH), (0, Signal.STRONG_BEARISH))
+
+# The most each group of technical rules can move the technical score, either way.
+TECHNICAL_GROUPS = {"trend": 10, "momentum": 6, "performance": 8, "breakout": 6, "flows": 10}
+RISING_VOLUME = 1.2  # volume EMA20 / EMA50 at or above this counts as rising participation
 
 MAX_ANALYST_ADJUSTMENT = 15
 MAX_MANAGER_ADJUSTMENT = 5
@@ -99,9 +108,24 @@ class _Rules:
         self.pillar = pillar
         self.factors: list[Factor] = []
 
-    def add(self, label: str, points: float, *evidence_ids: str) -> None:
+    def add(self, label: str, points: float, *evidence_ids: str,
+            group: str | None = None) -> None:
         self.factors.append(Factor(label=label, points=round(points, 1),
-                                   evidence_ids=list(evidence_ids)))
+                                   evidence_ids=list(evidence_ids), group=group))
+
+    def cap_groups(self, caps: Mapping[str, float]) -> None:
+        """Hold each group's total within its cap. The cut is its own factor, so the
+        factors still add up to the score."""
+        for group, cap in caps.items():
+            members = [f for f in self.factors if f.group == group]
+            total = sum(f.points for f in members)
+            if abs(total) <= cap:
+                continue
+            ids = list(dict.fromkeys(i for f in members for i in f.evidence_ids))
+            self.factors.append(Factor(
+                label=f"{group.title()} rules capped at {copysign(cap, total):+.0f}: they read "
+                      "the same move", points=round(copysign(cap, total) - total, 1),
+                evidence_ids=ids, group=group, kind="cap"))
 
     def result(self, confidence: Confidence, note: str | None = None,
                max_swing: float = 50) -> PillarScore:
@@ -121,34 +145,59 @@ def _technical(pack: EvidencePack, m: dict[str, MetricValue]) -> PillarScore:
         return PillarScore(pillar=Pillar.TECHNICAL, note=f"needs at least "
                            f"{MIN_SESSIONS_FOR_TECHNICALS} sessions of prices")
     rules = _Rules(Pillar.TECHNICAL)
+    # trend: where the price sits against its long averages
     if trend := m.get("ma_trend"):
-        rules.add(f"Moving-average trend: {trend.detail}", 8 * trend.value, trend.evidence_id)
-    for window, points in ((200, 6), (50, 4), (20, 3)):
+        rules.add(f"Moving-average trend: {trend.detail}", 6 * trend.value, trend.evidence_id,
+                  group="trend")
+    for window, points, group in ((200, 4, "trend"), (50, 3, "trend"), (20, 3, "momentum")):
         if gap := m.get(f"close_vs_sma{window}"):
             above = gap.value > 0
             rules.add(f"Close {'above' if above else 'below'} its {window}-day average "
-                      f"({gap.value:+.1f}%)", points if above else -points, gap.evidence_id)
+                      f"({gap.value:+.1f}%)", points if above else -points, gap.evidence_id,
+                      group=group)
+    # momentum: the last few weeks
     if macd := m.get("macd_hist"):
         positive = macd.value > 0
         rules.add(f"MACD histogram {'positive' if positive else 'negative'}",
-                  4 if positive else -4, macd.evidence_id)
+                  4 if positive else -4, macd.evidence_id, group="momentum")
     if rsi := m.get("rsi14"):
         label, rsi_points = _rsi_rule(rsi.value)
-        rules.add(label, rsi_points, rsi.evidence_id)
+        rules.add(label, rsi_points, rsi.evidence_id, group="momentum")
+    # performance: the 3-month return, alone and against the market and the sector
     if returns := m.get("return_3m"):
         rules.add(f"3-month return {returns.value:+.1f}%", _scaled(returns.value, 15, 6),
-                  returns.evidence_id)
-    if relative := m.get("rel_strength_3m"):
-        rules.add(f"{relative.value:+.1f} pp vs Nifty 50 over 3 months",
-                  _scaled(relative.value, 10, 8), relative.evidence_id)
+                  returns.evidence_id, group="performance")
+    for name in ("rel_strength_3m", "rel_strength_3m_sector"):
+        if relative := m.get(name):
+            rules.add(f"{relative.value:+.1f} pp vs {relative.detail} over 3 months",
+                      _scaled(relative.value, 10, 6), relative.evidence_id, group="performance")
     if (breakout := m.get("range_breakout")) and breakout.value:
         rules.add(f"Confirmed range breakout {'up' if breakout.value > 0 else 'down'}",
-                  8 * breakout.value, breakout.evidence_id)
+                  6 * breakout.value, breakout.evidence_id, group="breakout")
+    _flow_rules(rules, m)
+    rules.cap_groups(TECHNICAL_GROUPS)
 
     age = (pack.cutoff - pack.bars[-1].session).days
     confidence = (Confidence.LOW if age > STALE_PRICE_DAYS
                   else Confidence.HIGH if len(pack.bars) >= 200 else Confidence.MEDIUM)
     return rules.result(confidence)
+
+
+def _flow_rules(rules: _Rules, m: dict[str, MetricValue]) -> None:
+    """Volume and delivery: which side of the tape the shares are on."""
+    if delivery := m.get("delivery_updown20"):
+        rules.add(f"Average delivered volume on up days {delivery.value:.2f}x down days "
+                  "(20 sessions)", _scaled(log2(delivery.value), 1, 5), delivery.evidence_id,
+                  group="flows")
+    if volume := m.get("updown_volume20"):
+        rules.add(f"Average volume on up days {volume.value:.2f}x down days (20 sessions)",
+                  _scaled(log2(volume.value), 1, 4), volume.evidence_id, group="flows")
+    trend, month = m.get("volume_ema_ratio"), m.get("return_1m")
+    if trend and month and trend.value >= RISING_VOLUME and abs(month.value) >= 2:
+        rising = month.value > 0
+        rules.add(f"Volume rising (EMA20 {trend.value:.2f}x EMA50) behind the 1-month "
+                  f"{'gain' if rising else 'fall'}", 2 if rising else -2, trend.evidence_id,
+                  month.evidence_id, group="flows")
 
 
 def _rsi_rule(rsi: float) -> tuple[str, float]:
@@ -208,12 +257,22 @@ def _valuation(m: dict[str, MetricValue]) -> PillarScore:
         rules.add("Loss-making over the last four quarters", -25, eps.evidence_id)
         return rules.result(Confidence.MEDIUM)
 
-    pe, nifty, profit = m.get("pe_ttm"), m.get("nifty50_pe"), m.get("profit_yoy")
-    benchmarked = bool(pe and nifty and nifty.value > 0)
-    if pe and nifty and benchmarked:
-        rules.add(f"P/E {pe.value:.1f}x vs Nifty 50 {nifty.value:.1f}x",
-                  clamp(-log2(pe.value / nifty.value) * 12, -15, 15),
-                  pe.evidence_id, nifty.evidence_id)
+    pe, profit = m.get("pe_ttm"), m.get("profit_yoy")
+    market, sector = _positive(m.get("benchmark_pe")), _positive(m.get("sector_pe"))
+    if pe and sector:
+        # The sector is the like-for-like comparison. The market comparison stays at a
+        # third of the weight, so a whole sector priced far above the market still counts.
+        rules.add(f"P/E {pe.value:.1f}x vs {sector.detail} {sector.value:.1f}x",
+                  _pe_points(pe.value, sector.value, 12, 15), pe.evidence_id,
+                  sector.evidence_id)
+        if market:
+            rules.add(f"P/E {pe.value:.1f}x vs {market.detail} {market.value:.1f}x (market "
+                      "context)", _pe_points(pe.value, market.value, 4, 5), pe.evidence_id,
+                      market.evidence_id)
+    elif pe and market:
+        rules.add(f"P/E {pe.value:.1f}x vs {market.detail} {market.value:.1f}x",
+                  _pe_points(pe.value, market.value, 12, 15), pe.evidence_id,
+                  market.evidence_id)
     if pe and profit:
         if profit.value <= 0:
             rules.add(f"P/E {pe.value:.1f}x while profit fell {profit.value:.1f}%", -5,
@@ -225,10 +284,25 @@ def _valuation(m: dict[str, MetricValue]) -> PillarScore:
                       pe.evidence_id, profit.evidence_id)
     if not rules.factors:
         return PillarScore(pillar=Pillar.VALUATION,
-                           note="no benchmark P/E or profit growth to compare the P/E with")
-    return rules.result(Confidence.MEDIUM if benchmarked else Confidence.LOW,
-                        note="P/E is compared with the Nifty 50 only; sector and own-history "
-                        "comparisons are not built yet")
+                           note="no index P/E or profit growth to compare the P/E with")
+    if sector:
+        note = (f"P/E is compared with {sector.detail} (NSE-published, today's industry "
+                "classification; a large company can dominate its own sector index) and the "
+                "market; own-history comparison is not built yet")
+    else:
+        note = ("P/E is compared with the market only (no sector index for this stock); "
+                "own-history comparison is not built yet")
+    return rules.result(Confidence.MEDIUM if pe and (sector or market) else Confidence.LOW,
+                        note=note)
+
+
+def _positive(metric: MetricValue | None) -> MetricValue | None:
+    return metric if metric is not None and metric.value > 0 else None
+
+
+def _pe_points(pe: float, reference: float, per_doubling: float, cap: float) -> float:
+    """Points for a P/E against a reference: minus `per_doubling` each time it doubles."""
+    return clamp(-log2(pe / reference) * per_doubling, -cap, cap)
 
 
 # --- analyst adjustments and news -------------------------------------------------------
@@ -289,7 +363,7 @@ def build_scorecard(pack: EvidencePack, pillars: dict[str, PillarScore], vetoes:
     views = [_horizon_view(pack, horizon, weights, pillars, by_horizon.get(horizon), blocked,
                            caps) for horizon, weights in WEIGHTS.items()]
     return Scorecard(version=VERSION, pillars=[pillars[p.value] for p in Pillar],
-                     horizons=views, model_adjusted=model_adjusted)
+                     horizons=views, model_adjusted=model_adjusted, levels=build_levels(pack))
 
 
 def _horizon_view(pack: EvidencePack, horizon: Horizon, weights: dict[Pillar, int],
