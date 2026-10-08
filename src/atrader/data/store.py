@@ -14,7 +14,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from atrader.contracts import PriceBar
+from atrader.contracts import InstitutionalActivity, PriceBar
+from atrader.timeutil import end_of_day_ist
 
 if TYPE_CHECKING:
     from atrader.data.providers.nse_bhavcopy import DeliveryRow
@@ -67,6 +68,16 @@ CREATE TABLE IF NOT EXISTS delivery (
     delivered_qty INTEGER,
     delivery_pct REAL,
     PRIMARY KEY (symbol, series, session)
+);
+CREATE TABLE IF NOT EXISTS institutional_activity (
+    session TEXT NOT NULL,
+    participant TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    basis TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    available_at TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    PRIMARY KEY (session, participant, scope, basis, provider, available_at)
 );
 """
 
@@ -124,6 +135,33 @@ class MarketStore:
             )
 
     # --- bars ----------------------------------------------------------------------------
+
+    def save_institutional_activity(self, rows: Iterable[InstitutionalActivity]) -> int:
+        """Retain revisions so later observations cannot rewrite earlier research."""
+        payload = [(r.session.isoformat(), r.participant, r.scope, r.basis, r.source.provider,
+                    r.available_at.isoformat(), r.model_dump_json()) for r in rows]
+        with self._connect() as conn:
+            before = conn.total_changes
+            conn.executemany("INSERT OR IGNORE INTO institutional_activity VALUES (?,?,?,?,?,?,?)",
+                             payload)
+            return conn.total_changes - before
+
+    def institutional_activity(self, cutoff: date, sessions: int = 60
+                               ) -> list[InstitutionalActivity]:
+        boundary = end_of_day_ist(cutoff)
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT payload FROM institutional_activity WHERE session <= ? "
+                "AND julianday(available_at) <= julianday(?) ORDER BY julianday(available_at)",
+                (cutoff.isoformat(), boundary.isoformat()),
+            ).fetchall()
+        latest: dict[tuple[date, str, str, str, str], InstitutionalActivity] = {}
+        for (payload,) in rows:
+            row = InstitutionalActivity.model_validate_json(payload)
+            latest[(row.session, row.participant, row.scope, row.basis, row.source.provider)] = row
+        days = sorted({r.session for r in latest.values()}, reverse=True)[:sessions]
+        return sorted((r for r in latest.values() if r.session in days),
+                      key=lambda r: (r.session, r.scope, r.basis, r.participant, r.source.provider))
 
     def upsert_bars(self, rows: Iterable[tuple[str, str, str | None, PriceBar]]) -> int:
         """Insert (symbol, series, isin, bar) rows; returns the number written."""

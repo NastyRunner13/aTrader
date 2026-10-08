@@ -35,6 +35,8 @@ Use the web workspace to follow companies, read reports, inspect citations, and 
 | **Trace a claim** | Open a citation to inspect its value, date, formula, inputs, or original filing link. Unsupported claims are marked and excluded from later agent reasoning. |
 | **Understand price context** | Daily candlesticks, moving averages, volume, support and resistance, anchored VWAPs, and the heaviest-traded band. |
 | **See what changes the signal** | Code-computed hypothetical closing prices that would move a horizon into another signal band. |
+| **Test the thesis** | Cited assumptions, observable failure conditions and upcoming disclosed events; missing evidence stays visible. |
+| **Inspect institutional context** | Separate NSE-only and combined-exchange FPI/DII cash activity, with complete-history 5/20/60-session trends. |
 | **Control the research** | Choose the depth and request budget, follow live stage progress, cancel work, or resume from a checkpoint. |
 | **Keep the result** | Export a compact signal card, full Markdown analysis, or structured JSON. |
 
@@ -102,6 +104,11 @@ uv run atrader ingest
 ```
 
 The initial download can take **30–40 minutes** at the project's conservative request rate. It collects roughly 300 price/index sessions and about 100 delivery-position sessions; later runs fetch missing days. NSE access and connection speed affect the duration.
+
+Ingestion also captures the latest provisional FPI/DII cash activity. These observations
+accumulate when collected; the source does not backfill earlier sessions. Rolling trends
+stay incomplete until all required sessions are stored. Current-date research also
+refreshes activity. No collection schedule is installed automatically.
 
 ### 3. Open the workspace
 
@@ -171,6 +178,7 @@ uv run atrader resume RUN_ID
 | `uv run atrader models` | List eligible free models and check the configured choices. |
 | `uv run atrader usage` | Show today's request usage; accounting uses UTC days. |
 | `uv run atrader runs` | List recent runs and their status. |
+| `uv run atrader ingest-institutional` | Capture the latest provisional FPI/DII activity without downloading price history. |
 | `uv run atrader serve` | Start the local web API. |
 
 </details>

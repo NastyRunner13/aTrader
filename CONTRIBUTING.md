@@ -13,18 +13,17 @@ Use lowercase, hyphen-separated descriptions:
 
 ```text
 <type>/<short-description>
-codex/<type>/<short-description>    # agent-created branches
 ```
 
 Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, and `perf`. Include an
 issue number when one exists, for example `feat/123-institutional-context`.
 Examples: `fix/announcement-coverage`, `docs/contribution-guide`, and
-`codex/feat/investor-research`.
+`feat/investor-research`. Use the same structure for human- and agent-created branches.
 
 ```powershell
 git switch main
 git pull --ff-only origin main
-git switch -c codex/feat/investor-research
+git switch -c feat/investor-research
 ```
 
 Use one branch per coherent change. Avoid mixing unrelated cleanup into feature

@@ -550,7 +550,7 @@ export interface components {
              * @default fundamental
              * @enum {string}
              */
-            category: "fundamental" | "valuation" | "technical" | "liquidity" | "pattern" | "market" | "flow" | "level";
+            category: "fundamental" | "valuation" | "technical" | "liquidity" | "pattern" | "market" | "flow" | "level" | "institutional";
         };
         /** EventRating */
         EventRating: {
@@ -582,7 +582,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "facts" | "metrics" | "announcements" | "shareholding" | "news";
+            kind: "facts" | "metrics" | "announcements" | "shareholding" | "news" | "institutional_activity";
             /** Item */
             item: {
                 [key: string]: unknown;
@@ -629,6 +629,11 @@ export interface components {
              * @default []
              */
             news: components["schemas"]["NewsItem"][];
+            /**
+             * Institutional Activity
+             * @default []
+             */
+            institutional_activity: components["schemas"]["InstitutionalActivity"][];
             /**
              * Indices
              * @default []
@@ -811,6 +816,50 @@ export interface components {
             pe: number | null;
             /** Pe As Of */
             pe_as_of: string | null;
+        };
+        /**
+         * InstitutionalActivity
+         * @description One market-wide cash observation. Availability is when we first observed this version.
+         */
+        InstitutionalActivity: {
+            /**
+             * Evidence Id
+             * @default
+             */
+            evidence_id: string;
+            /**
+             * Session
+             * Format: date
+             */
+            session: string;
+            /**
+             * Participant
+             * @enum {string}
+             */
+            participant: "FPI" | "DII";
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "nse" | "combined";
+            /**
+             * Basis
+             * @default provisional
+             * @enum {string}
+             */
+            basis: "provisional" | "confirmed";
+            /** Purchases Inr */
+            purchases_inr: number;
+            /** Sales Inr */
+            sales_inr: number;
+            /** Net Inr */
+            net_inr: number;
+            /**
+             * Available At
+             * Format: date-time
+             */
+            available_at: string;
+            source: components["schemas"]["SourceRef"];
         };
         /** InstrumentOut */
         InstrumentOut: {
@@ -1402,6 +1451,11 @@ export interface components {
             horizons: components["schemas"]["HorizonNote"][];
             /** Unresolved */
             unresolved: string[];
+            /**
+             * Thesis Tests
+             * @description Three decisive assumptions with falsifiers when supported; missing ones belong in unresolved. Never invent a disclosed next event.
+             */
+            thesis_tests: components["schemas"]["ThesisTest"][];
             /** @default completed */
             status: components["schemas"]["AgentStatus"];
             /** Dropped Reasons */
@@ -1413,6 +1467,36 @@ export interface components {
              * @default
              */
             prompt_version: string;
+        };
+        /**
+         * ThesisTest
+         * @description A thesis assumption paired with an observable falsifier and a disclosed next event.
+         */
+        ThesisTest: {
+            /** Assumption */
+            assumption: string;
+            /**
+             * Evidence Ids
+             * @description Evidence for the assumption.
+             */
+            evidence_ids: string[];
+            /**
+             * Invalidated By
+             * @description Observable condition that would disprove it.
+             */
+            invalidated_by: string;
+            /**
+             * Next Event
+             * @description Next disclosed event; null when unknown.
+             */
+            next_event: string | null;
+            /** Next Event Date */
+            next_event_date: string | null;
+            /**
+             * Next Event Evidence Ids
+             * @description Official disclosure A IDs supporting the next event.
+             */
+            next_event_evidence_ids: string[];
         };
         /** Usage */
         Usage: {

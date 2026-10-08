@@ -2,6 +2,7 @@ from atrader.agents import context
 from atrader.agents.utils import ask
 from atrader.contracts import AgentStatus, Synthesis, SynthesisOutput
 from atrader.verification import verify_reasons
+from atrader.verification.claims import normalise_ids
 
 
 def create_portfolio_manager(llm):
@@ -23,6 +24,11 @@ score and signal. Explain it for a reader who wants the answer, not the whole an
 - For the 2y note, use up to three decisive thesis assumptions as drivers, pair them
   with observable failure conditions in down_if, and name the next disclosed event
   that could resolve uncertainty in up_if. State when the next event is unknown.
+- thesis_tests: return three decisive assumptions when evidence supports them. Each
+  has evidence_ids, an observable invalidated_by condition, and the next_event with
+  its next_event_date and separate official A citations in next_event_evidence_ids.
+  Unknown events or dates must be null. These are conditional tests, not predictions.
+  Do not pad missing assumptions; explain them in unresolved instead.
 - Separate business quality from price attractiveness. Explain the range of outcomes
   and room for estimation error; a trailing P/E discount is not a measured margin of
   safety. Distinguish guidance, consensus, our scenarios and price-implied expectations.
@@ -50,9 +56,40 @@ score and signal. Explain it for a reader who wants the answer, not the whole an
 
         pros, dropped = verify_reasons(output.pros, pack)
         cons, dropped_cons = verify_reasons(output.cons, pack)
+        tests, unresolved = [], list(output.unresolved)
+        assumptions = set()
+        known = pack.evidence_ids()
+        disclosures = {a.evidence_id for a in pack.announcements}
+        for test in output.thesis_tests:
+            if test.assumption.casefold() in assumptions:
+                unresolved.append("A repeated thesis assumption was omitted.")
+                continue
+            ids = list(dict.fromkeys(normalise_ids(test.evidence_ids)))
+            if not ids or not set(ids) <= known:
+                unresolved.append("A thesis assumption was omitted because its citations "
+                                  "were missing or unknown.")
+                continue
+            assumptions.add(test.assumption.casefold())
+            events = list(dict.fromkeys(normalise_ids(test.next_event_evidence_ids)))
+            event_valid = bool(test.next_event and events and set(events) <= disclosures)
+            if test.next_event_date is not None and test.next_event_date <= pack.cutoff:
+                event_valid = False
+            if (test.next_event or test.next_event_date or events) and not event_valid:
+                unresolved.append("The next event for a thesis assumption could not be "
+                                  "traced to an upcoming event in an official disclosure; "
+                                  "left unknown.")
+            tests.append(test.model_copy(update={
+                "evidence_ids": ids, "next_event": test.next_event if event_valid else None,
+                "next_event_date": test.next_event_date if event_valid else None,
+                "next_event_evidence_ids": events if event_valid else [],
+            }))
+        if len(tests) < 3:
+            unresolved.append(f"Only {len(tests)} of three thesis assumptions had valid "
+                              "citations; remaining assumptions need evidence.")
         synthesis = Synthesis(
-            **output.model_dump(exclude={"pros", "cons"}),
+            **output.model_dump(exclude={"pros", "cons", "thesis_tests", "unresolved"}),
             pros=pros, cons=cons, dropped_reasons=dropped + dropped_cons,
+            thesis_tests=tests, unresolved=unresolved,
             model_call_ids=call_ids,
         )
         return {"final_synthesis": synthesis}

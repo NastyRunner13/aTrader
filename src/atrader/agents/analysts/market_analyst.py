@@ -21,8 +21,9 @@ explain them.
   participation consistent with possible accumulation or distribution, not identified
   buyers or sellers. Keep four datasets distinct: market-wide FPI/DII cash activity,
   sector FPI investment, company institutional ownership, and volume/delivery.
-  The first three are currently missing; never infer them from volume or delivery.
-- For future institutional evidence: NSE-only and combined-exchange activity are separate
+  Market cash activity may be present; sector flows and detailed company ownership
+  remain missing. Never infer any institutional dataset from volume or delivery.
+- For institutional evidence: NSE-only and combined-exchange activity are separate
   scopes; provisional exchange and custodian-confirmed series are separate. Sector net
   investment is not assets under custody. Company position value can rise through price
   appreciation, and ownership percentage can fall through dilution without selling.
@@ -43,6 +44,7 @@ explain them.
             context.metrics(pack, "technical", title="Technical indicators"),
             context.metrics(pack, "pattern", title="Rule-based chart signals"),
             context.metrics(pack, "flow", title="Volume and delivery"),
+            context.institutional(pack),
             context.metrics(pack, "level", title="Price levels (past turning points and volume)"),
             context.metrics(pack, "liquidity", "market", title="Liquidity and market context"),
             context.base_scores(state, Pillar.TECHNICAL),

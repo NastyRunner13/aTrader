@@ -14,6 +14,7 @@ from typing import Literal, Protocol
 
 from atrader.analytics.flows import MIN_SESSIONS as MIN_DELIVERY_SESSIONS
 from atrader.analytics.flows import WINDOW as FLOW_WINDOW
+from atrader.analytics.institutional import institutional_metrics
 from atrader.analytics.metrics import number, pack_metrics, resolve_metric_ids
 from atrader.analytics.prices import split_bonus_adjust
 from atrader.config import Settings
@@ -21,9 +22,11 @@ from atrader.contracts import (
     Announcement,
     Coverage,
     CoverageEntry,
+    DerivedMetric,
     EvidencePack,
     FinancialFact,
     IndexSeries,
+    InstitutionalActivity,
     Listing,
     NewsItem,
     PriceBar,
@@ -36,6 +39,7 @@ from atrader.data.providers import (
     gdelt_news,
     nse_announcements,
     nse_bhavcopy,
+    nse_institutional,
     nse_sectors,
     nse_shareholding,
 )
@@ -113,14 +117,15 @@ class NseEvidenceBuilder:
         news, news_coverage = self._news(listing, cutoff)
         coverage.append(news_coverage)
 
+        self._progress("institutional market activity")
+        activity, activity_metrics, activity_coverage = self._institutional(cutoff)
+        coverage.append(activity_coverage)
+
         for category, detail in (
             ("business_economics", "Structured segments, customer concentration, competitive "
              "advantage and reinvestment economics are not collected yet."),
             ("financial_resilience", "Cash-flow statements, debt maturities and bank/NBFC "
              "asset-quality and funding metrics are not collected yet."),
-            ("institutional_market_activity", "Daily FPI/DII cash purchases, sales and "
-             "5/20/60-session trends are not collected; NSE-only and combined exchanges, "
-             "provisional and custodian-confirmed series must remain separate."),
             ("institutional_sector_activity", "Fortnightly sector FPI net investment and "
              "assets under custody are not collected; holding-value changes are not flows."),
             ("institutional_ownership", "Detailed company FPI and mutual-fund shares and "
@@ -142,7 +147,9 @@ class NseEvidenceBuilder:
             cutoff=cutoff,
             built_at=now_utc(),
             facts=tuple(facts),
-            metrics=tuple(pack_metrics(bars, facts, indices)),
+            metrics=tuple(resolve_metric_ids([*pack_metrics(bars, facts, indices),
+                                              *activity_metrics])),
+            institutional_activity=tuple(activity),
             announcements=tuple(number(announcements, "A")),
             shareholding=tuple(number(shareholding, "S")),
             news=tuple(number(news, "N")),
@@ -153,6 +160,38 @@ class NseEvidenceBuilder:
         )
 
     # --- sources -------------------------------------------------------------------------
+
+    def _institutional(self, cutoff: date) -> tuple[list[InstitutionalActivity],
+                                                   list[DerivedMetric], CoverageEntry]:
+        errors: list[str] = []
+        if cutoff >= today_ist():
+            _, errors = nse_institutional.collect_activity(self._client, self._store)
+        rows = number(self._store.institutional_activity(cutoff), "I")
+        # Price/index archives supply the session calendar; activity alone cannot prove
+        # there were no missing trading days between the observations we happened to save.
+        sessions = sorted({d for dataset in ("equity", "index")
+                           for d, status in self._store.known_sessions(dataset).items()
+                           if status == "ok" and d <= cutoff})
+        metrics = institutional_metrics(rows, sessions)
+        expected = {f"{participant}_{scope}_provisional_nse.institutional_net_{window}s"
+                    for participant in ("fpi", "dii") for scope in ("nse", "combined")
+                    for window in (5, 20, 60)}
+        complete = sum(m.value is not None and m.name in expected for m in metrics)
+        latest = max((r.session for r in rows), default=None)
+        status = Coverage.AVAILABLE if complete == 12 and not errors else Coverage.PARTIAL
+        if not rows:
+            status = Coverage.ACCESS_BLOCKED if errors else Coverage.MISSING
+        elif latest and (cutoff - latest).days > 7:
+            status = Coverage.STALE
+        detail = (f"{len(rows)} stored observations; {complete}/12 complete 5/20/60-session "
+                  "trends across FPI/DII and NSE-only/combined scopes. Provisional cash "
+                  "activity, no company-level attribution or scoring weight. History "
+                  "accumulates on collection; availability uses observation timestamps, "
+                  "not backdated session dates. Custodian-confirmed data is not collected.")
+        if errors:
+            detail += " Collection issues: " + "; ".join(errors)
+        return rows, metrics, CoverageEntry(category="institutional_market_activity",
+                                             status=status, detail=detail, as_of=latest)
 
     def _prices(self, listing: Listing, cutoff: date) -> tuple[list[PriceBar],
                                                               list[CoverageEntry]]:

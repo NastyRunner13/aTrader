@@ -19,6 +19,7 @@ from atrader.contracts import (
     DerivedMetric,
     FinancialFact,
     IndexSeries,
+    InstitutionalActivity,
     NewsItem,
     PriceBar,
     ShareholdingSnapshot,
@@ -79,7 +80,8 @@ def resolve_metric_ids(metrics: list[DerivedMetric]) -> list[DerivedMetric]:
     ]
 
 
-def number[T: (FinancialFact, DerivedMetric, Announcement, ShareholdingSnapshot, NewsItem)](
+def number[T: (FinancialFact, DerivedMetric, Announcement, ShareholdingSnapshot, NewsItem,
+                InstitutionalActivity)](
     items: list[T], prefix: str,
 ) -> list[T]:
     return [item.model_copy(update={"evidence_id": f"{prefix}{i}"})

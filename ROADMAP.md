@@ -1,6 +1,6 @@
 # aTrader roadmap
 
-Last updated **8 October 2026**. Feature IDs (F01–F37) come from [docs/03](docs/03-feature-map.md) and delivery stages from [docs/09](docs/09-validation-and-roadmap.md). Update this file whenever a feature changes status.
+Last updated **9 October 2026**. Feature IDs (F01–F37) come from [docs/03](docs/03-feature-map.md) and delivery stages from [docs/09](docs/09-validation-and-roadmap.md). Update this file whenever a feature changes status.
 
 **Where we are:** the first working version runs end to end on live NSE data **with a real model**, and ends in a **signal card**: 0–100 scores and signals for 1 month, 6 months and 2 years. Agents in the same step run in parallel. On 4 October 2026, a compact run on L&T made 6 calls, all valid on the first attempt, at zero cost, in 52 s of model time (about 88 s before the parallel graph). On 5 October the scorecard moved to `scorecard/2`: technical rules are grouped and capped, valuation compares the P/E with the NSE sector index, volume and delivery flows are scored, and the card shows price levels and the closes that would flip each signal. The scoring rules and weights are still starting priors; the next step is to validate them with the `--cutoff` backtest (M2) and run the other nine pilot companies.
 
@@ -9,8 +9,11 @@ Status key: ✅ done · 🟡 partial · ⬜ not started · ⏸ deferred by decis
 **Investor-research foundation (8 October):** `scorecard/3` removes quarterly PEG and
 unexplained promoter-percentage scoring. Eight-quarter comparisons, reverse EPS
 sensitivity, content review of broad Updates, expanded agent responsibilities and
-explicit institutional-data gaps are implemented. Financial-statement depth and
-institutional collectors remain pending; see [the implementation checklist](docs/11-investor-research.md).
+explicit institutional-data gaps are implemented. On 9 October, the latest-session
+NSE FPI/DII cash collector, stored-history trends and cited thesis/failure/event
+records were added across agents, API and reports. Financial-statement depth,
+sector FPI and detailed ownership collectors remain pending; see
+[the implementation checklist](docs/11-investor-research.md).
 
 ## Completed so far
 

@@ -13,7 +13,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from atrader.contracts.common import Coverage, StatementBasis
 from atrader.contracts.instruments import Listing
@@ -27,6 +27,7 @@ class EvidenceKind(StrEnum):
     ANNOUNCEMENT = "A"
     SHAREHOLDING = "S"
     NEWS = "N"
+    INSTITUTIONAL_ACTIVITY = "I"
 
 
 class SourceRef(BaseModel):
@@ -110,7 +111,7 @@ class DerivedMetric(BaseModel):
     detail: str | None = None
     quality_flags: tuple[str, ...] = ()
     category: Literal["fundamental", "valuation", "technical", "liquidity", "pattern",
-                      "market", "flow", "level"] = "fundamental"
+                      "market", "flow", "level", "institutional"] = "fundamental"
 
 
 class Announcement(BaseModel):
@@ -151,6 +152,30 @@ class NewsItem(BaseModel):
     source: SourceRef
 
 
+class InstitutionalActivity(BaseModel):
+    """One market-wide cash observation. Availability is when we first observed this version."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    evidence_id: str = ""
+    session: date
+    participant: Literal["FPI", "DII"]
+    scope: Literal["nse", "combined"]
+    basis: Literal["provisional", "confirmed"] = "provisional"
+    purchases_inr: float = Field(ge=0)
+    sales_inr: float = Field(ge=0)
+    net_inr: float
+    available_at: AwareDatetime
+    source: SourceRef
+
+    @model_validator(mode="after")
+    def _reconciles(self) -> InstitutionalActivity:
+        # NSE publishes crore values to two decimal places; allow displayed rounding.
+        if abs(self.purchases_inr - self.sales_inr - self.net_inr) > 200_000:
+            raise ValueError("institutional purchases minus sales does not reconcile with net")
+        return self
+
+
 class IndexSeries(BaseModel):
     """An NSE index the stock is compared with: daily closes and its published P/E."""
 
@@ -185,6 +210,7 @@ class EvidencePack(BaseModel):
     announcements: tuple[Announcement, ...] = ()
     shareholding: tuple[ShareholdingSnapshot, ...] = ()
     news: tuple[NewsItem, ...] = ()
+    institutional_activity: tuple[InstitutionalActivity, ...] = ()
     bars: tuple[PriceBar, ...] = ()
     indices: tuple[IndexSeries, ...] = ()
     industry: str | None = None  # NSE industry, today's classification (not point-in-time)
@@ -197,7 +223,8 @@ class EvidencePack(BaseModel):
 
     def items_by_id(self) -> dict[str, EvidenceItem]:
         items: dict[str, EvidenceItem] = {}
-        for group in (self.facts, self.metrics, self.announcements, self.shareholding, self.news):
+        for group in (self.facts, self.metrics, self.announcements, self.shareholding, self.news,
+                      self.institutional_activity):
             for item in group:
                 items[item.evidence_id] = item
         return items
@@ -217,4 +244,5 @@ class EvidencePack(BaseModel):
         return bool(self.bars) or bool(self.facts)
 
 
-EvidenceItem = FinancialFact | DerivedMetric | Announcement | ShareholdingSnapshot | NewsItem
+EvidenceItem = (FinancialFact | DerivedMetric | Announcement | ShareholdingSnapshot | NewsItem
+                | InstitutionalActivity)

@@ -10,14 +10,15 @@ type Found =
   | { kind: "metric"; item: EvidencePack["metrics"][number] }
   | { kind: "announcement"; item: EvidencePack["announcements"][number] }
   | { kind: "shareholding"; item: EvidencePack["shareholding"][number] }
+  | { kind: "institutional"; item: EvidencePack["institutional_activity"][number] }
   | { kind: "news"; item: EvidencePack["news"][number] };
 
 type Context = { open: (id: string) => void; openSources: (ids: string[]) => void; has: (id: string) => boolean };
 
 const EvidenceContext = createContext<Context>({ open: () => {}, openSources: () => {}, has: () => false });
 
-const ID = /^[FMASN]\d+$/;
-const INLINE = /\[([FMASN]\d+)\]/g;
+const ID = /^[FMASNI]\d+$/;
+const INLINE = /\[([FMASNI]\d+)\]/g;
 
 function indexPack(pack: EvidencePack | null): Map<string, Found> {
   const index = new Map<string, Found>();
@@ -27,6 +28,7 @@ function indexPack(pack: EvidencePack | null): Map<string, Found> {
   for (const item of pack.announcements ?? []) index.set(item.evidence_id ?? "", { kind: "announcement", item });
   for (const item of pack.shareholding ?? []) index.set(item.evidence_id ?? "", { kind: "shareholding", item });
   for (const item of pack.news ?? []) index.set(item.evidence_id ?? "", { kind: "news", item });
+  for (const item of pack.institutional_activity ?? []) index.set(item.evidence_id ?? "", { kind: "institutional", item });
   return index;
 }
 
@@ -108,6 +110,7 @@ const KIND_LABEL: Record<Found["kind"], string> = {
   metric: "Calculated metric",
   announcement: "Exchange announcement",
   shareholding: "Shareholding pattern",
+  institutional: "Institutional cash activity",
   news: "News headline",
 };
 
@@ -117,6 +120,7 @@ function evidenceTitle(found: Found | null): string {
     case "fact": case "metric": return found.item.label;
     case "announcement": return found.item.category;
     case "shareholding": return `Shareholding at ${dateOnly(found.item.period_end)}`;
+    case "institutional": return `${found.item.participant} cash activity · ${dateOnly(found.item.session)}`;
     case "news": return found.item.title;
   }
 }
@@ -190,6 +194,26 @@ function Source({ url, label }: { url: string | null | undefined; label: string 
 
 function EvidenceBody({ found }: { found: Found }) {
   switch (found.kind) {
+    case "institutional": {
+      const row = found.item;
+      return (
+        <>
+          <p className="prose-body mt-3">Market-wide cash activity. These figures do not identify buying or selling in this company. NSE-only and combined totals overlap.</p>
+          <dl className="mt-5">
+            <Row label="Participant">{row.participant}</Row>
+            <Row label="Scope">{row.scope === "nse" ? "NSE only" : "NSE, BSE and MSEI"}</Row>
+            <Row label="Reporting basis">{row.basis}</Row>
+            <Row label="Session">{dateOnly(row.session)}</Row>
+            <Row label="Purchases">{metricValue(row.purchases_inr, "INR")}</Row>
+            <Row label="Sales">{metricValue(row.sales_inr, "INR")}</Row>
+            <Row label="Net activity">{metricValue(row.net_inr, "INR")}</Row>
+            <Row label="Observed">{stamp(row.available_at)}</Row>
+            <Row label="Published">{row.source.published_at ? stamp(row.source.published_at) : "Time not supplied by source"}</Row>
+            <Row label="Source"><Source url={row.source.url} label="Open exchange data" /></Row>
+          </dl>
+        </>
+      );
+    }
     case "fact": {
       const f = found.item;
       return (

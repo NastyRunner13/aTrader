@@ -1392,7 +1392,8 @@
               "pattern",
               "market",
               "flow",
-              "level"
+              "level",
+              "institutional"
             ],
             "title": "Category",
             "default": "fundamental"
@@ -1465,7 +1466,8 @@
               "metrics",
               "announcements",
               "shareholding",
-              "news"
+              "news",
+              "institutional_activity"
             ],
             "title": "Kind"
           },
@@ -1537,6 +1539,14 @@
             "title": "News",
             "default": []
           },
+          "institutional_activity": {
+            "items": {
+              "$ref": "#/components/schemas/InstitutionalActivity"
+            },
+            "type": "array",
+            "title": "Institutional Activity",
+            "default": []
+          },
           "indices": {
             "items": {
               "$ref": "#/components/schemas/IndexSeries"
@@ -1575,6 +1585,7 @@
           "announcements",
           "shareholding",
           "news",
+          "institutional_activity",
           "indices",
           "industry",
           "coverage"
@@ -2048,6 +2059,82 @@
         ],
         "title": "IndexSeries",
         "description": "An NSE index the stock is compared with: daily closes and its published P/E."
+      },
+      "InstitutionalActivity": {
+        "properties": {
+          "evidence_id": {
+            "type": "string",
+            "title": "Evidence Id",
+            "default": ""
+          },
+          "session": {
+            "type": "string",
+            "format": "date",
+            "title": "Session"
+          },
+          "participant": {
+            "type": "string",
+            "enum": [
+              "FPI",
+              "DII"
+            ],
+            "title": "Participant"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "nse",
+              "combined"
+            ],
+            "title": "Scope"
+          },
+          "basis": {
+            "type": "string",
+            "enum": [
+              "provisional",
+              "confirmed"
+            ],
+            "title": "Basis",
+            "default": "provisional"
+          },
+          "purchases_inr": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Purchases Inr"
+          },
+          "sales_inr": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Sales Inr"
+          },
+          "net_inr": {
+            "type": "number",
+            "title": "Net Inr"
+          },
+          "available_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Available At"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceRef"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evidence_id",
+          "session",
+          "participant",
+          "scope",
+          "basis",
+          "purchases_inr",
+          "sales_inr",
+          "net_inr",
+          "available_at",
+          "source"
+        ],
+        "title": "InstitutionalActivity",
+        "description": "One market-wide cash observation. Availability is when we first observed this version."
       },
       "InstrumentOut": {
         "properties": {
@@ -3683,6 +3770,15 @@
             "type": "array",
             "title": "Unresolved"
           },
+          "thesis_tests": {
+            "items": {
+              "$ref": "#/components/schemas/ThesisTest"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Thesis Tests",
+            "description": "Three decisive assumptions with falsifiers when supported; missing ones belong in unresolved. Never invent a disclosed next event."
+          },
           "status": {
             "$ref": "#/components/schemas/AgentStatus",
             "default": "completed"
@@ -3714,12 +3810,82 @@
           "cons",
           "horizons",
           "unresolved",
+          "thesis_tests",
           "status",
           "dropped_reasons",
           "model_call_ids",
           "prompt_version"
         ],
         "title": "Synthesis"
+      },
+      "ThesisTest": {
+        "properties": {
+          "assumption": {
+            "type": "string",
+            "maxLength": 600,
+            "minLength": 1,
+            "title": "Assumption"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Ids",
+            "description": "Evidence for the assumption."
+          },
+          "invalidated_by": {
+            "type": "string",
+            "maxLength": 600,
+            "minLength": 1,
+            "title": "Invalidated By",
+            "description": "Observable condition that would disprove it."
+          },
+          "next_event": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 600
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Event",
+            "description": "Next disclosed event; null when unknown."
+          },
+          "next_event_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Event Date"
+          },
+          "next_event_evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Next Event Evidence Ids",
+            "description": "Official disclosure A IDs supporting the next event."
+          }
+        },
+        "type": "object",
+        "required": [
+          "assumption",
+          "evidence_ids",
+          "invalidated_by",
+          "next_event",
+          "next_event_date",
+          "next_event_evidence_ids"
+        ],
+        "title": "ThesisTest",
+        "description": "A thesis assumption paired with an observable falsifier and a disclosed next event."
       },
       "Usage": {
         "properties": {

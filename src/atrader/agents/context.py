@@ -101,6 +101,30 @@ def coverage(pack: EvidencePack) -> str:
     return "\n".join(lines)
 
 
+def institutional(pack: EvidencePack) -> str:
+    rows = pack.institutional_activity
+    if not rows:
+        return ""
+    lines = ["## Institutional cash activity (market-wide, not company flows)",
+             "NSE-only and combined exchanges overlap: never add their totals together. "
+             "Provisional exchange activity is not custodian-confirmed investment. "
+             "Publication times are unknown; observation times bound availability."]
+    latest = {}
+    for row in sorted(rows, key=lambda r: r.session):
+        latest[(row.participant, row.scope, row.basis, row.source.provider)] = row
+    for row in latest.values():
+        lines.append(f"[{row.evidence_id}] {row.session}: {row.participant}, {row.scope}, "
+                     f"{row.basis}; purchases {format_value(row.purchases_inr, 'INR')}, "
+                     f"sales {format_value(row.sales_inr, 'INR')}, "
+                     f"net {format_value(row.net_inr, 'INR')}; observed {row.available_at}")
+    for metric in pack.metrics:
+        if metric.category == "institutional":
+            lines.append(f"[{metric.evidence_id}] {metric.label}: "
+                         f"{format_value(metric.value, metric.unit)}; {metric.detail}; "
+                         f"window ends {metric.as_of}; inputs {', '.join(metric.inputs)}")
+    return "\n".join(lines)
+
+
 def all_evidence(pack: EvidencePack) -> str:
     return join(
         company(pack),
@@ -112,6 +136,7 @@ def all_evidence(pack: EvidencePack) -> str:
         news(pack),
         metrics(pack, "technical", "pattern", "liquidity", title="Technicals and liquidity"),
         metrics(pack, "flow", title="Volume and delivery"),
+        institutional(pack),
         metrics(pack, "level", title="Price levels (past turning points and volume)"),
         coverage(pack),
     )

@@ -113,7 +113,10 @@ def test_updates_reach_agents_and_prompt_truncation_is_visible(settings, monkeyp
 
 
 def test_missing_institutional_datasets_are_separate_coverage_gaps(settings, monkeypatch):
-    builder = NseEvidenceBuilder(Mock(), Mock(), settings)
+    store = Mock()
+    store.institutional_activity.return_value = []
+    store.known_sessions.return_value = {}
+    builder = NseEvidenceBuilder(Mock(), store, settings)
     monkeypatch.setattr(builder, "resolve", lambda symbol: LISTING)
     monkeypatch.setattr(builder, "_prices", lambda *args: ([], []))
     monkeypatch.setattr(builder, "_index_series", lambda *args: None)
@@ -122,7 +125,7 @@ def test_missing_institutional_datasets_are_separate_coverage_gaps(settings, mon
     for method in ("_financials", "_announcements", "_shareholding", "_news"):
         monkeypatch.setattr(builder, method, lambda *args: ([], entry))
     pack = builder.build(ResearchRequest(symbol=LISTING.symbol, cutoff=CUTOFF))
-    for category in ("institutional_market_activity", "institutional_sector_activity",
+    for category in ("institutional_sector_activity",
                      "institutional_ownership", "business_economics", "financial_resilience"):
         coverage = pack.coverage_for(category)
         assert coverage is not None and coverage.status == Coverage.NOT_REQUESTED

@@ -140,5 +140,6 @@ class StatusOut(BaseModel):
 
 
 class EvidenceOut(BaseModel):
-    kind: Literal["facts", "metrics", "announcements", "shareholding", "news"]
+    kind: Literal["facts", "metrics", "announcements", "shareholding", "news",
+                  "institutional_activity"]
     item: dict[str, object]

@@ -11,7 +11,8 @@ from typing import Any
 
 from atrader.contracts import ResearchReport
 
-EVIDENCE_GROUPS = ("facts", "metrics", "announcements", "shareholding", "news")
+EVIDENCE_GROUPS = ("facts", "metrics", "announcements", "shareholding", "news",
+                   "institutional_activity")
 EXPORTS = {"card": (".md", "text/markdown"), "details": ("-details.md", "text/markdown"),
            "json": (".json", "application/json")}
 

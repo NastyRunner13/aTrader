@@ -1,6 +1,6 @@
 import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
-import { count, dateOnly, elapsed, sentence } from "@/lib/format";
+import { count, dateOnly, elapsed, metricValue, sentence } from "@/lib/format";
 import { BANDS, SIGNAL_LABEL } from "@/lib/signal";
 import type { AgentReport, Claim, CoverageEntry, DebateTurn, Report, RiskReview, Veto } from "@/lib/types";
 import { Cited } from "../evidence";
@@ -193,6 +193,13 @@ export function Analysis({ report }: { report: Report }) {
   const calls = report.model_calls.filter((c) => c.status !== "blocked");
   const tokens = calls.reduce((sum, c) => sum + (c.prompt_tokens ?? 0) + (c.completion_tokens ?? 0), 0);
   const cost = calls.reduce((sum, c) => sum + (c.cost ?? 0), 0);
+  const activity = report.pack?.institutional_activity ?? [];
+  const latestActivity = new Map<string, (typeof activity)[number]>();
+  for (const row of activity) {
+    const key = `${row.participant}/${row.scope}/${row.basis}/${row.source.provider}`;
+    if (!latestActivity.has(key) || row.session > latestActivity.get(key)!.session) latestActivity.set(key, row);
+  }
+  const flowMetrics = (report.pack?.metrics ?? []).filter((m) => m.category === "institutional");
 
   return (
     <section aria-labelledby="analysis-title">
@@ -200,6 +207,41 @@ export function Analysis({ report }: { report: Report }) {
         Full analysis
       </h2>
       <p className="meta mt-1 mb-3">Everything the agents wrote. Claims whose citations did not check out are marked and were kept out of the debate.</p>
+
+      {synthesis?.status === "completed" && (synthesis.thesis_tests ?? []).length > 0 && (
+        <Fold title="Thesis assumptions and failure conditions" hint={`${synthesis.thesis_tests.length} assumptions`}>
+          <p className="meta">Conditional tests to revisit as evidence changes. Citations establish traceability, not certainty.</p>
+          <ul className="divide-y divide-line">
+            {synthesis.thesis_tests.map((test, index) => (
+              <li key={index} className="space-y-2 py-4 first:pt-0">
+                <p className="font-semibold"><Cited text={test.assumption} ids={test.evidence_ids} /></p>
+                <p className="text-ink-2"><span className="font-medium text-ink">Would fail if: </span>{test.invalidated_by}</p>
+                <p className="text-ink-2"><span className="font-medium text-ink">Next event: </span>{test.next_event ? <Cited text={test.next_event} ids={test.next_event_evidence_ids} /> : "Not disclosed"}{test.next_event && ` · ${test.next_event_date ? dateOnly(test.next_event_date) : "Date not disclosed"}`}</p>
+              </li>
+            ))}
+          </ul>
+        </Fold>
+      )}
+
+      {activity.length > 0 && (
+        <Fold title="Institutional market context" hint="FPI / DII cash activity">
+          <p className="prose-body !text-sm">Market-wide activity does not identify purchases in this company. NSE-only and combined-exchange figures overlap; they must not be added together. Provisional figures can be revised.</p>
+          <div className="overflow-x-auto">
+            <table className="tbl">
+              <thead><tr><th scope="col">Participant / scope</th><th scope="col">Session</th><th scope="col" className="r">Purchases</th><th scope="col" className="r">Sales</th><th scope="col" className="r">Net activity</th></tr></thead>
+              <tbody>{[...latestActivity.values()].map((row) => (
+                <tr key={row.evidence_id}>
+                  <td><Cited text={`${row.participant} · ${row.scope === "nse" ? "NSE only" : "NSE / BSE / MSEI"}`} ids={[row.evidence_id]} /><span className="meta block">{row.basis}</span></td>
+                  <td>{dateOnly(row.session)}</td><td className="num r">{metricValue(row.purchases_inr, "INR")}</td><td className="num r">{metricValue(row.sales_inr, "INR")}</td><td className="num r">{metricValue(row.net_inr, "INR")}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+          {flowMetrics.length > 0 ? <ul className="space-y-2">{flowMetrics.map((metric) => (
+            <li key={metric.evidence_id}><Cited text={metric.label} ids={[metric.evidence_id]} />: <span className="num">{metric.value == null ? "Incomplete history" : metricValue(metric.value, metric.unit)}</span><p className="meta">{metric.detail} · Window ends {dateOnly(metric.as_of)}</p></li>
+          ))}</ul> : <p className="meta">Rolling trends need a stored market-session calendar and complete observation windows.</p>}
+        </Fold>
+      )}
 
       {report.analyst_reports.length > 0 && (
         <Fold title="Analyst reports" hint={`${report.analyst_reports.length}`}>

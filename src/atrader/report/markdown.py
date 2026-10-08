@@ -18,7 +18,8 @@ def render_details(report: ResearchReport, card_name: str | None = None) -> str:
     pack = report.pack
     parts = [_header(report, card_name), _score_breakdown(report)]
     if pack is not None:
-        parts += [_coverage(report), _financials(pack), _metrics(pack), _catalysts(pack)]
+        parts += [_coverage(report), _financials(pack), _metrics(pack), _catalysts(pack),
+                  _institutional(pack)]
     if report.request.mode != Mode.DATA_ONLY:
         parts += [_analysts(report), _debate(report), _risk_team(report), _synthesis(report)]
     parts += [_appendix(report)]
@@ -149,6 +150,25 @@ def _catalysts(pack: EvidencePack) -> str:
     return "\n".join(lines)
 
 
+def _institutional(pack: EvidencePack) -> str:
+    if not pack.institutional_activity:
+        return ""
+    lines = ["## Institutional cash activity", "",
+             "Market-wide activity, not company buying/selling. NSE-only and combined scopes "
+             "overlap; do not add them. Provisional figures are not custodian-confirmed. "
+             "Observation times, rather than session dates, bound availability.", "",
+             "| ID | Session | Participant | Scope / basis | Purchases | Sales | Net | Observed |",
+             "|---|---|---|---|---|---|---|---|"]
+    for row in reversed(pack.institutional_activity):
+        lines.append(f"| {row.evidence_id} | {row.session} | {row.participant} | "
+                     f"{row.scope} / {row.basis} | {format_value(row.purchases_inr, 'INR')} | "
+                     f"{format_value(row.sales_inr, 'INR')} | {format_value(row.net_inr, 'INR')} "
+                     f"| {row.available_at.isoformat()} |")
+    sources = sorted({r.source.url for r in pack.institutional_activity if r.source.url})
+    lines += ["", *[f"- [Source]({url})" for url in sources]]
+    return "\n".join(lines)
+
+
 def _analysts(report: ResearchReport) -> str:
     if not report.analyst_reports:
         return ""
@@ -215,6 +235,15 @@ def _synthesis(report: ResearchReport) -> str:
         lines += ["", "**Pros**", *_reasons(s.pros)]
     if s.cons:
         lines += ["", "**Cons**", *_reasons(s.cons)]
+    if s.thesis_tests:
+        lines += ["", "### Thesis assumptions and failure conditions"]
+        for test in s.thesis_tests:
+            lines += [f"- Assumption: {test.assumption} {_cite(test.evidence_ids)}",
+                      f"  - Invalidated by: {test.invalidated_by}",
+                      f"  - Next event: {test.next_event or 'unknown'}"
+                      + (f" ({test.next_event_date})" if test.next_event_date
+                         else " (date unknown)")
+                      + (f" {_cite(test.next_event_evidence_ids)}" if test.next_event else "")]
     for note in s.horizons:
         lines += ["", f"**{note.horizon.label}** (adjustment {note.adjustment:+d}"
                   + (f": {note.adjustment_reason}" if note.adjustment_reason else "") + ")"]

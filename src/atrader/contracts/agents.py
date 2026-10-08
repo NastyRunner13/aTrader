@@ -11,9 +11,10 @@ Two layers per role:
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from atrader.contracts.common import (
     AgentStatus,
@@ -213,6 +214,23 @@ class HorizonNote(BaseModel):
     )
 
 
+class ThesisTest(BaseModel):
+    """A thesis assumption paired with an observable falsifier and a disclosed next event."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    assumption: str = Field(min_length=1, max_length=600)
+    evidence_ids: list[str] = Field(default_factory=list,
+                                    description="Evidence for the assumption.")
+    invalidated_by: str = Field(min_length=1, max_length=600,
+                                description="Observable condition that would disprove it.")
+    next_event: str | None = Field(default=None, max_length=600,
+                                   description="Next disclosed event; null when unknown.")
+    next_event_date: date | None = None
+    next_event_evidence_ids: list[str] = Field(
+        default_factory=list, description="Official disclosure A IDs supporting the next event.")
+
+
 class SynthesisOutput(BaseModel):
     summary: str = Field(description="Two or three plain sentences a non-expert understands.")
     pros: list[Reason] = Field(default_factory=list, max_length=5)
@@ -221,6 +239,10 @@ class SynthesisOutput(BaseModel):
         default_factory=list, max_length=3, description="One note each for 1m, 6m and 2y."
     )
     unresolved: list[str] = Field(default_factory=list)
+    thesis_tests: list[ThesisTest] = Field(
+        default_factory=list, max_length=3,
+        description="Three decisive assumptions with falsifiers when supported; missing ones "
+        "belong in unresolved. Never invent a disclosed next event.")
 
 
 class Synthesis(SynthesisOutput):

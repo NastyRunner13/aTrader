@@ -29,7 +29,7 @@ from atrader.timeutil import now_utc
 
 Responder = Callable[[str, type[BaseModel], str], dict[str, Any]]
 
-_EVIDENCE = re.compile(r"\[([FMASN]\d+)\]")
+_EVIDENCE = re.compile(r"\[([FMASNI]\d+)\]")
 _CLAIM = re.compile(r"\[(C-[a-z_]+-\d+-\d+|C-[a-z_]+-\d+)\]")
 
 

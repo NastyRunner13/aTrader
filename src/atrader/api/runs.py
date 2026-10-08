@@ -174,6 +174,7 @@ class RunManager:
                                   "run can be resumed")
             self._check_can_start(row["request"].mode, row["dry_run"])
             live = self._live[run_id] = live or LiveRun(run_id, row["request"], row["dry_run"])
+            self._registry.set_status(run_id, RunStatus.QUEUED)
             live.reopen()
         self._pool.submit(self._work, run_id, row["request"], row["dry_run"], True)
         return run_id

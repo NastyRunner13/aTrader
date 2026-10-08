@@ -11,6 +11,8 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
+from atrader.analytics.institutional import institutional_metrics
+from atrader.analytics.metrics import number, resolve_metric_ids
 from atrader.api.app import create_app
 from atrader.config import Settings
 from atrader.contracts import Listing, ResearchRequest, RunStatus
@@ -19,6 +21,7 @@ from atrader.data.store import MarketStore
 from atrader.graph.research_graph import ResearchGraph
 from atrader.graph.run_registry import RunRegistry
 from tests.conftest import LISTING, StaticEvidence, make_bars, make_pack
+from tests.test_institutional import observation
 
 ORIGIN = "http://localhost:3000"
 OTHER = Listing(symbol="OTHERCO", isin="INE000O01011", name="Other Industries Limited")
@@ -71,6 +74,29 @@ def start(client, **body):
 
 
 # --- search, status ----------------------------------------------------------------------------
+
+
+def test_institutional_evidence_survives_saved_report_api_and_exports(tmp_path):
+    pack = make_pack()
+    rows = number([observation(pack.cutoff)], "I")
+    pack = pack.model_copy(update={
+        "institutional_activity": tuple(rows),
+        "metrics": tuple(resolve_metric_ids([
+            *pack.metrics, *institutional_metrics(rows, [b.session for b in pack.bars])]))})
+    client, _, _ = make_client(tmp_path, StaticEvidence(pack))
+    run = settled(client, start(client)["run_id"])
+    path = f"/v1/reports/{run['report_id']}"
+    report = client.get(path).json()
+    assert report["pack"]["institutional_activity"][0]["net_inr"] == 100
+    found = client.get(f"{path}/evidence/I1").json()
+    assert found["kind"] == "institutional_activity"
+    assert found["item"]["scope"] == "nse"
+    metric = next(m for m in report["pack"]["metrics"] if m["category"] == "institutional")
+    assert metric["value"] is None and metric["inputs"] == ["I1"]
+    details = client.get(f"{path}/export?format=details").text
+    assert "Institutional" in details and "I1" in details
+    exported = client.get(f"{path}/export?format=json").json()
+    assert exported["pack"]["institutional_activity"] == report["pack"]["institutional_activity"]
 
 
 def test_search_and_status(client):
@@ -214,7 +240,15 @@ def test_cancel_stops_the_run_and_resume_continues_it(tmp_path):
 
     cancelled = settled(client, run_id)
     assert cancelled["status"] == "cancelled" and cancelled["report_id"] is None
-    assert client.post(f"/v1/runs/{run_id}/resume").status_code == 202
+    # Hold the worker to verify resume publishes queued before returning acceptance.
+    release_queue = threading.Event()
+    client.app.state.services.runs._pool.submit(release_queue.wait, 10)
+    try:
+        resumed = client.post(f"/v1/runs/{run_id}/resume")
+        assert resumed.status_code == 202 and resumed.json()["status"] == "queued"
+        assert client.get(f"/v1/runs/{run_id}").json()["status"] == "queued"
+    finally:
+        release_queue.set()
     finished = settled(client, run_id)
     assert finished["status"] == "completed" and finished["report_id"]
     assert len(evidence.requests) == 1  # the evidence pack was not collected again

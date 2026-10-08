@@ -17,6 +17,7 @@ from atrader.config import Settings, get_settings
 from atrader.contracts import Mode
 from atrader.data.http import PoliteClient
 from atrader.data.providers.nse_bhavcopy import ingest_sessions
+from atrader.data.providers.nse_institutional import collect_activity
 from atrader.data.providers.nse_instruments import InstrumentMaster
 from atrader.data.store import MarketStore
 from atrader.graph.research_graph import ResearchGraph, RunPaused
@@ -82,11 +83,28 @@ def ingest(sessions: int = typer.Option(320, help="Weekdays of history to downlo
     settings = get_settings()
     settings.ensure_dirs()
     with PoliteClient(settings.cache_dir, settings.http_min_interval_s) as client:
-        result = ingest_sessions(client, MarketStore(settings.db_path), today_ist(), sessions)
+        store = MarketStore(settings.db_path)
+        result = ingest_sessions(client, store, today_ist(), sessions)
+        activity_count, activity_errors = collect_activity(client, store)
     typer.echo(f"downloaded {result.downloaded}, delivery files {result.delivery_downloaded}, "
                f"holidays {result.holidays}, already present {result.already_present}")
-    for failure in result.failed or []:
+    typer.echo(f"institutional cash observations saved: {activity_count}")
+    for failure in [*(result.failed or []), *activity_errors]:
         typer.secho(f"  failed {failure}", fg="yellow")
+
+
+@app.command("ingest-institutional")
+def ingest_institutional() -> None:
+    """Capture the latest FPI/DII cash observations without price ingestion."""
+    settings = get_settings()
+    settings.ensure_dirs()
+    with PoliteClient(settings.cache_dir, settings.http_min_interval_s) as client:
+        written, errors = collect_activity(client, MarketStore(settings.db_path))
+    typer.echo(f"institutional cash observations saved: {written}")
+    for error in errors:
+        typer.secho(error, fg="yellow")
+    if errors:
+        raise typer.Exit(1)
 
 
 @app.command()

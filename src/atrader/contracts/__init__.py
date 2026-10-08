@@ -17,6 +17,7 @@ from atrader.contracts.agents import (
     ScoreAdjustment,
     Synthesis,
     SynthesisOutput,
+    ThesisTest,
     Veto,
 )
 from atrader.contracts.common import (
@@ -42,6 +43,7 @@ from atrader.contracts.evidence import (
     EvidencePack,
     FinancialFact,
     IndexSeries,
+    InstitutionalActivity,
     NewsItem,
     PriceBar,
     ShareholdingSnapshot,
@@ -87,6 +89,7 @@ __all__ = [
     "HorizonNote",
     "HorizonView",
     "IndexSeries",
+    "InstitutionalActivity",
     "Level",
     "Listing",
     "Mode",
@@ -113,5 +116,6 @@ __all__ = [
     "StatementBasis",
     "Synthesis",
     "SynthesisOutput",
+    "ThesisTest",
     "Veto",
 ]
