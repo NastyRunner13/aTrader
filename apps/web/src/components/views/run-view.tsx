@@ -63,7 +63,7 @@ function StageRow({ stage, live, progress }: { stage: Stage; live: Map<string, s
   const manyNodes = stage.nodes.length > 1;
   const showNodes = manyNodes && stage.state !== "pending" && stage.state !== "skipped";
   return (
-    <li className="grid grid-cols-[1.5rem_1fr] gap-3 border-b border-line py-4 last:border-0">
+    <li data-state={stage.state} className="grid grid-cols-[1.5rem_1fr] gap-3 border-b border-line py-4 last:border-0">
       <span className="pt-0.5">
         <StageIcon state={stage.state} />
       </span>
@@ -76,12 +76,12 @@ function StageRow({ stage, live, progress }: { stage: Stage; live: Map<string, s
         {showNodes && (
           <ul className="mt-2 space-y-1">
             {stage.nodes.map((node) => {
-              const state = live.get(node) ?? (stage.state === "done" ? "done" : "pending");
+              const state = live.get(node) ?? (stage.state === "done" ? "done" : "unknown");
               return (
                 <li key={node} className="flex items-center gap-2 text-ink-2">
                   <span className={`size-1.5 rounded-full ${state === "done" ? "bg-accent" : state === "running" ? "pulse-dot !size-1.5" : state === "error" ? "bg-bad-ink" : "bg-line-strong"}`} aria-hidden />
                   {nodeLabel(node)}
-                  <span className="meta">{state === "done" ? "finished" : state === "running" ? "working" : state === "error" ? "failed" : "waiting"}</span>
+                  <span className="meta">{state === "done" ? "finished" : state === "running" ? "working" : state === "error" ? "failed" : "no update recorded"}</span>
                 </li>
               );
             })}
@@ -118,6 +118,9 @@ export function RunView({ id }: { id: string }) {
   const live = nodeStates(events);
   const lastProgress = [...events].reverse().find((e) => e.type === "progress");
   const log = events.filter((e) => describeEvent(e) !== null);
+  const stages = data.stages.filter((stage) => stage.state !== "skipped");
+  const done = stages.filter((stage) => stage.state === "done").length;
+  const working = stages.find((stage) => stage.state === "running");
 
   return (
     <>
@@ -143,7 +146,7 @@ export function RunView({ id }: { id: string }) {
         <span>{MODE_LABEL[data.request.mode]}</span>
         {data.request.cutoff && <span className="text-ink-3">cutoff {data.request.cutoff}</span>}
         {data.dry_run && <Badge tone="bad">Dry run</Badge>}
-        <span className="num text-ink-3">{elapsed(seconds)}</span>
+        {Number.isFinite(seconds) && <span className="num text-ink-3">{elapsed(seconds)} elapsed</span>}
         <Link href={`/c/${encodeURIComponent(data.request.symbol)}`} className="text-accent underline-offset-2 hover:underline">
           View company
         </Link>
@@ -166,11 +169,12 @@ export function RunView({ id }: { id: string }) {
             }}
           />
           {data.stages.length > 0 ? (
-            <section aria-labelledby="stages-title">
-              <h2 id="stages-title" className="section-title">
-                Progress
-              </h2>
-              <ol className="mt-2 border-t border-line" aria-live="polite">
+            <section aria-labelledby="stages-title" className="report-surface">
+              <div className="run-stage-summary"><h2 id="stages-title" className="section-title">Research workflow</h2><span className="meta num">{done} of {stages.length} stages complete</span></div>
+              {working && <p className="text-accent" role="status">Now: {working.label}</p>}
+              <div className="run-progress-track" aria-hidden>{stages.map((stage) => <span key={stage.key} data-state={stage.state} />)}</div>
+              <p className="meta mt-2">Each segment is a stage; stages can take different amounts of time.</p>
+              <ol className="run-stage-list mt-5" aria-live="polite">
                 {data.stages.map((stage) => (
                   <StageRow
                     key={stage.key}
@@ -186,7 +190,7 @@ export function RunView({ id }: { id: string }) {
           )}
         </div>
 
-        <aside aria-labelledby="log-title">
+        <aside aria-labelledby="log-title" className="report-surface self-start">
           <h2 id="log-title" className="section-title">
             Activity
           </h2>

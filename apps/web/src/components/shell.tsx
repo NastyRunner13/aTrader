@@ -404,24 +404,27 @@ function CommandPalette({
 
 // --- start a run -------------------------------------------------------------------------------
 
-const MODES: { value: Mode; title: string; cap: number; text: string }[] = [
+const MODES: { value: Mode; title: string; cap: number; text: string; usage: string }[] = [
   {
     value: "data_only",
     title: "Data only",
     cap: 0,
-    text: "A code-only scorecard from NSE data. No model is used, so news is not scored. Takes about a minute.",
+    text: "NSE data and scoring rules. No model analysis or news score.",
+    usage: "No model requests · About a minute",
   },
   {
     value: "compact",
     title: "Compact",
     cap: 8,
-    text: "Three analysts, one bull and bear round, and the portfolio manager. 6 model requests, up to 8 with retries.",
+    text: "Three analysts, one debate round and a final synthesis.",
+    usage: "6 requests · Up to 8 with retries",
   },
   {
     value: "full",
     title: "Full",
     cap: 14,
-    text: "Two debate rounds and a three-way risk review. 11 model requests, up to 14 with retries.",
+    text: "Two debate rounds, three risk reviews and a final synthesis.",
+    usage: "11 requests · Up to 14 with retries",
   },
 ];
 
@@ -435,7 +438,7 @@ function RunLauncher({
   const router = useRouter();
   const open = request !== null;
   const dialog = useDialog(open, onClose);
-  const { data: status } = useApi<Status>(open ? "/v1/status" : null);
+  const { data: status, error: statusError } = useApi<Status>(open ? "/v1/status" : null);
   const [symbol, setSymbol] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<Mode>("data_only");
@@ -454,8 +457,9 @@ function RunLauncher({
   }, [request]);
 
   const blocked = (cap: number): string | null => {
-    if (cap === 0 || dryRun || !status) return null;
-    if (!status.model.api_key_set) return "Needs OPENROUTER_API_KEY in .env.";
+    if (cap === 0 || dryRun) return null;
+    if (!status) return statusError ? "Model availability could not be checked." : "Checking availability…";
+    if (!status.model.api_key_set) return "Setup needed";
     if (status.usage.remaining < cap)
       return `Needs ${cap} requests; ${status.usage.remaining} left today.`;
     return null;
@@ -470,7 +474,7 @@ function RunLauncher({
 
   const today = new Date().toISOString().slice(0, 10);
   const submit = async () => {
-    if (!symbol) return;
+    if (!symbol || start.pending || modeBlocked) return;
     const run = await start.run({
       symbol,
       mode,
@@ -484,7 +488,7 @@ function RunLauncher({
   };
 
   return (
-    <dialog {...dialog} className="palette" aria-labelledby="launch-title">
+    <dialog {...dialog} className="palette run-launcher" aria-labelledby="launch-title">
       <form
         method="dialog"
         onSubmit={(event) => {
@@ -492,17 +496,16 @@ function RunLauncher({
           void submit();
         }}
       >
-        <div className="px-6 pb-2 pt-5">
+        <div className="launch-header">
           <h2 id="launch-title" className="display text-xl">
             Research a company
           </h2>
           <p className="meta mt-1">
-            Starting a run never happens on its own. Choose how much of today’s
-            model allowance it may use.
+            Choose a company and how deeply to research it.
           </p>
         </div>
 
-        <div className="space-y-5 px-6 py-4">
+        <div className="launch-body space-y-5">
           <div>
             <label htmlFor="launch-company" className="font-medium">
               Company
@@ -561,7 +564,7 @@ function RunLauncher({
           </div>
 
           <fieldset>
-            <legend className="font-medium">Depth</legend>
+            <legend className="font-medium">Research depth</legend>
             <div className="mt-1.5 space-y-2">
               {MODES.map((m) => {
                 const reason = blocked(m.cap);
@@ -585,9 +588,10 @@ function RunLauncher({
                       onChange={() => setMode(m.value)}
                       className="mt-1 accent-[var(--color-accent)]"
                     />
-                    <span>
+                    <span className="min-w-0 flex-1">
                       <span className="block font-semibold">{m.title}</span>
-                      <span className="block text-ink-2">{m.text}</span>
+                      <span className="mt-1 block text-xs leading-relaxed text-ink-2">{m.text}</span>
+                      <span className="mt-2 block text-xs text-ink-3">{dryRun ? "Preview only · No model requests" : m.usage}</span>
                       {reason && (
                         <span className="mt-0.5 block text-warn-ink">
                           {reason}
@@ -599,6 +603,11 @@ function RunLauncher({
               })}
             </div>
           </fieldset>
+
+          {status && !status.model.api_key_set && !dryRun && <details className="setup-help">
+            <summary className="cursor-pointer font-medium text-accent">Set up model research</summary>
+            <p className="mt-2 text-sm text-ink-2">Add your OpenRouter API key as <code>OPENROUTER_API_KEY</code> in the project’s <code>.env</code> file, restart the API, then reopen this form. Data-only research works without a key.</p>
+          </details>}
 
           <details className="fold">
             <summary className="meta cursor-pointer hover:text-ink">
@@ -651,7 +660,9 @@ function RunLauncher({
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-line px-6 py-4">
+        <div className="launch-footer">
+          <p className="meta">{dryRun ? "Dry run · No model requests" : mode === "data_only" ? "No model requests used" : `Up to ${MODES.find((m) => m.value === mode)?.cap} requests${status ? ` · ${status.usage.remaining} available` : ""}`}</p>
+          <div className="flex justify-end gap-2">
           <button
             type="button"
             className="btn"
@@ -662,10 +673,11 @@ function RunLauncher({
           <button
             type="submit"
             className="btn btn-primary"
-            disabled={!symbol || start.pending}
+            disabled={!symbol || start.pending || Boolean(modeBlocked)}
           >
             {start.pending ? "Starting…" : "Start research"}
           </button>
+          </div>
         </div>
       </form>
     </dialog>

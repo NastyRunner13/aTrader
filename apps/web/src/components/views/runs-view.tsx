@@ -3,6 +3,7 @@
 import { Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { ago, MODE_LABEL } from "@/lib/format";
 import { useApi } from "@/lib/hooks";
 import { isActive } from "@/lib/signal";
@@ -14,10 +15,18 @@ import { Badge, EmptyState, ErrorNotice, PageTitle, Skeleton } from "../ui";
 export function RunsView() {
   const router = useRouter();
   const { launchRun } = useShell();
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("all");
+  const [depth, setDepth] = useState("all");
   const runs = useApi<Run[]>("/v1/runs?limit=50", {
     refreshInterval: (data) =>
       data?.some((run) => isActive(run.status)) ? 3000 : 0,
   });
+  const filtered = runs.data?.filter((run) =>
+    run.request.symbol.toLowerCase().includes(query.trim().toLowerCase()) &&
+    (status === "all" || (status === "active" ? isActive(run.status) : run.status === status)) &&
+    (depth === "all" || run.request.mode === depth),
+  ) ?? [];
 
   return (
     <>
@@ -33,8 +42,7 @@ export function RunsView() {
           </button>
         }
       >
-        Every research run, newest first. One runs at a time; the rest wait
-        their turn.
+        Your latest 50 runs, newest first. Track progress and revisit the results.
       </PageTitle>
 
       <div className="mt-8">
@@ -63,7 +71,19 @@ export function RunsView() {
             works.
           </EmptyState>
         ) : (
-          <div className="panel overflow-x-auto">
+          <>
+          <div className="run-filters">
+            <label><span className="meta">Company</span><input type="search" className="field" placeholder="Filter by symbol…" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+            <label><span className="meta">Status</span><select className="field" value={status} onChange={(event) => setStatus(event.target.value)}>
+              <option value="all">All statuses</option><option value="active">Active</option><option value="completed">Completed</option><option value="partial">Partial</option><option value="paused_quota">Paused</option><option value="failed">Failed</option><option value="cancelled">Cancelled</option>
+            </select></label>
+            <label><span className="meta">Depth</span><select className="field" value={depth} onChange={(event) => setDepth(event.target.value)}>
+              <option value="all">All depths</option>{Object.entries(MODE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select></label>
+            <p className="meta py-2" role="status">{filtered.length} of {runs.data.length} runs</p>
+            {(query || status !== "all" || depth !== "all") && <button type="button" className="btn btn-quiet" onClick={() => { setQuery(""); setStatus("all"); setDepth("all"); }}>Clear filters</button>}
+          </div>
+          {filtered.length === 0 ? <EmptyState title="No runs match these filters">Try another company, status or research depth.</EmptyState> : <div className="panel overflow-x-auto">
             <table className="tbl min-w-[40rem]">
               <thead>
                 <tr>
@@ -77,7 +97,7 @@ export function RunsView() {
                 </tr>
               </thead>
               <tbody>
-                {runs.data.map((run) => {
+                {filtered.map((run) => {
                   const href = `/runs/${run.run_id}`;
                   return (
                     <tr
@@ -110,6 +130,7 @@ export function RunsView() {
                       </td>
                       <td>
                         <RunStatusBadge status={run.status} />
+                        {isActive(run.status) && <p className="meta mt-1">{run.stages.find((stage) => stage.state === "running")?.label ?? "Waiting to start"}</p>}
                       </td>
                       <td className="whitespace-nowrap text-ink-2">
                         {ago(run.created_at)}
@@ -134,7 +155,8 @@ export function RunsView() {
                 })}
               </tbody>
             </table>
-          </div>
+          </div>}
+          </>
         )}
       </div>
     </>
