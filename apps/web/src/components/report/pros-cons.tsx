@@ -11,9 +11,9 @@ function List({ title, reasons, kind }: { title: string; reasons: Reason[]; kind
       {reasons.length === 0 ? (
         <p className="meta mt-2">Nothing stood out.</p>
       ) : (
-        <ul className="mt-2 space-y-3">
+        <ul className="driver-list mt-2">
           {reasons.map((reason) => (
-            <li key={reason.statement} className="flex gap-2.5">
+            <li key={reason.statement} className="flex gap-3 border-b border-line py-4 last:border-0">
               <span
                 className={`mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full ${
                   kind === "pro" ? "bg-bull-wash text-bull-ink" : "bg-bear-wash text-bear-ink"
@@ -22,9 +22,9 @@ function List({ title, reasons, kind }: { title: string; reasons: Reason[]; kind
               >
                 <Icon size={11} strokeWidth={3} />
               </span>
-              <p className="text-ink-2">
+              <p className="text-[0.9375rem] leading-relaxed text-ink-2">
                 <span className="sr-only">{kind === "pro" ? "Pro: " : "Con: "}</span>
-                <Cited text={reason.statement} ids={reason.evidence_ids ?? []} />
+                <Cited text={reason.statement} ids={reason.evidence_ids ?? []} grouped />
               </p>
             </li>
           ))}
@@ -40,12 +40,12 @@ export function ProsCons({ report }: { report: Report }) {
   return (
     <section aria-labelledby="proscons-title">
       <h2 id="proscons-title" className="section-title">
-        Pros and cons
+        Risks and drivers
       </h2>
       {fromRules && <p className="meta mt-1">From the scoring rules that moved the scores most; no model wrote these.</p>}
       <div className="mt-4 grid gap-x-10 gap-y-6 sm:grid-cols-2">
-        <List title="Pros" reasons={pros} kind="pro" />
-        <List title="Cons" reasons={cons} kind="con" />
+        <List title="What supports the outlook" reasons={pros} kind="pro" />
+        <List title="What needs caution" reasons={cons} kind="con" />
       </div>
     </section>
   );

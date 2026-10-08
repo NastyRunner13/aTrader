@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import { flipText, rangeText } from "@/lib/report";
 import { HORIZON_LABEL, HORIZON_SHORT, PILLAR_LABEL } from "@/lib/signal";
+import { sentence } from "@/lib/format";
 import type { Horizon, Scorecard } from "@/lib/types";
 import { Cited } from "../evidence";
 import { SignalChip } from "../signal";
@@ -70,7 +71,11 @@ export function HorizonDetail({ card }: { card: Scorecard }) {
           <span className="font-semibold">{HORIZON_LABEL[view.horizon]}</span>
           <SignalChip signal={view.signal} />
           {view.score != null && <span className="num text-ink-2">{view.score} / 100</span>}
+          <span className="meta">{sentence(view.confidence)} confidence</span>
         </div>
+        {view.driven_by && <p className="meta">Driven by {PILLAR_LABEL[view.driven_by]}</p>}
+        {view.capped_by.length > 0 && <p className="text-warn-ink">Held at Neutral by {view.capped_by.join(", ").replaceAll("_", " ")}.</p>}
+        {view.score == null && <p className="text-ink-2">{view.weight_covered}% of this horizon’s weight had a score; at least 60% is needed, or a constraint blocked the signal.</p>}
 
         {view.drivers.length === 0 && view.up_if.length === 0 && view.down_if.length === 0 && (
           <p className="meta">No model notes for this horizon; the score above comes from the code rules alone.</p>
@@ -95,7 +100,7 @@ export function HorizonDetail({ card }: { card: Scorecard }) {
         {view.manager_adjustment !== 0 && (
           <p className="text-ink-2">
             The portfolio manager moved this score {view.manager_adjustment > 0 ? "+" : "−"}
-            {Math.abs(view.manager_adjustment)}: {view.manager_reason ?? "no reason given"}.
+            {Math.abs(view.manager_adjustment)}: <Cited text={view.manager_reason ?? "No reason given."} grouped />
           </p>
         )}
         {range && view.price_range && (

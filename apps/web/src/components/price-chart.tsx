@@ -14,7 +14,7 @@ import {
 } from "lightweight-charts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
-import { count, dateOnly, rupees } from "@/lib/format";
+import { count, dateOnly, rupees, signedPct } from "@/lib/format";
 import { useApi } from "@/lib/hooks";
 import type { Bars, Level } from "@/lib/types";
 import { CopyCommand } from "./ui";
@@ -25,11 +25,6 @@ const RANGES = [
   { label: "1Y", sessions: 250 },
   { label: "2Y", sessions: 500 },
 ] as const;
-
-const LINE_KINDS: Partial<Record<Level["kind"], string>> = {
-  resistance: "R",
-  support: "S",
-};
 
 /** A design token as rgb(): the chart library cannot read oklch(), the browser can. */
 function token(name: string): string {
@@ -74,6 +69,7 @@ export function PriceChart({
   symbol,
   levels = [],
   close,
+  levelsAsOf,
   height = 360,
   initialSessions = 250,
   compact = false,
@@ -81,6 +77,7 @@ export function PriceChart({
   symbol: string;
   levels?: Level[];
   close?: number;
+  levelsAsOf?: string;
   height?: number;
   initialSessions?: number;
   compact?: boolean;
@@ -110,6 +107,15 @@ export function PriceChart({
   const byDateRef = useRef(byDate);
   byDateRef.current = byDate;
   const last = data?.bars.at(-1);
+  const previous = data?.bars.at(-2);
+  const change = last && previous && previous.close > 0 ? (last.close / previous.close - 1) * 100 : null;
+  const drawn = useMemo(() => {
+    const reference = close ?? last?.close ?? 0;
+    return (["resistance", "support"] as const).flatMap((kind) => levels
+      .filter((level) => level.kind === kind)
+      .sort((a, b) => Math.abs(a.price - reference) - Math.abs(b.price - reference))
+      .slice(0, 2));
+  }, [levels, close, last?.close]);
 
   // Create the chart once the container exists.
   useEffect(() => {
@@ -130,6 +136,7 @@ export function PriceChart({
       },
       rightPriceScale: {
         borderVisible: false,
+        alignLabels: true,
         scaleMargins: { top: 0.06, bottom: 0.2 },
       },
       timeScale: { borderVisible: false, rightOffset: 4, timeVisible: false },
@@ -257,27 +264,16 @@ export function PriceChart({
     for (const line of s.lines) s.candles.removePriceLine(line);
     s.lines = [];
     if (!show.levels) return;
-    const reference = close ?? last?.close ?? 0;
-    const nearest = (kind: Level["kind"]) =>
-      levels
-        .filter((l) => l.kind === kind)
-        .sort(
-          (a, b) =>
-            Math.abs(a.price - reference) - Math.abs(b.price - reference),
-        )
-        .slice(0, 2);
-    const drawn = [...nearest("resistance"), ...nearest("support")];
     s.lines = drawn.map((level) =>
       s.candles.createPriceLine({
         price: level.price,
         color: token("--color-ink-3"),
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
-        axisLabelVisible: true,
-        title: LINE_KINDS[level.kind] ?? "",
+        axisLabelVisible: false,
       }),
     );
-  }, [levels, show.levels, close, last?.close, data]);
+  }, [drawn, show.levels, data]);
 
   if (error) {
     return error.code === "no_prices" ? (
@@ -313,15 +309,20 @@ export function PriceChart({
       : null);
 
   return (
-    <figure>
-      <figcaption className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+    <figure className="price-chart">
+      {!compact && <div className="chart-quote">
+        <div><p className="meta">Latest stored close · {last ? dateOnly(last.session) : "Loading prices…"}</p><div className="mt-1 flex flex-wrap items-baseline gap-3"><strong className="num text-[1.75rem] font-medium">{rupees(last?.close)}</strong>{change != null && <span className={`num font-medium ${change >= 0 ? "text-bull-ink" : "text-bear-ink"}`}>{signedPct(change, 2)} <span className="meta font-normal">vs prior session</span></span>}</div></div>
+        <span className="badge">Daily · NSE</span>
+      </div>}
+      <figcaption className="chart-toolbar">
         <div
-          className={compact ? "hidden" : "min-h-9 num text-xs text-ink-2"}
+          className={compact ? "hidden" : "chart-readout num text-xs text-ink-2"}
           aria-live="off"
         >
           {shown ? (
             <>
               <span className="font-medium text-ink">
+                {hover ? "Selected " : "Latest "}
                 {dateOnly(shown.session)}
               </span>
               <span className="ml-3">O {rupees(shown.open)}</span>
@@ -370,11 +371,9 @@ export function PriceChart({
               </button>
             ))}
           </div>
-          <div
-            role="group"
-            aria-label="Chart layers"
-            className={compact ? "hidden" : "flex flex-wrap gap-1.5"}
-          >
+          {!compact && <details className="chart-indicators">
+            <summary className="btn btn-sm cursor-pointer">Indicators <span className="text-ink-3">{Object.values(show).filter(Boolean).length}</span></summary>
+            <div role="group" aria-label="Chart layers" className="chart-layer-options">
             <Toggle
               on={show.levels}
               onChange={(on) => setShow((s) => ({ ...s, levels: on }))}
@@ -394,10 +393,11 @@ export function PriceChart({
                 onChange={(on) => setShow((s) => ({ ...s, [key]: on }))}
                 swatch={`var(${color})`}
               >
-                {label}
+                SMA {label}
               </Toggle>
             ))}
-          </div>
+            </div>
+          </details>}
         </div>
       </figcaption>
 
@@ -410,6 +410,11 @@ export function PriceChart({
           aria-label={`Candlestick chart of ${symbol} daily prices${last ? `, last close ${rupees(last.close)}` : ""}`}
         />
       </div>
+      {!compact && show.levels && drawn.length > 0 && <div className="chart-level-legend">
+        <p className="meta">Report levels{levelsAsOf ? ` · ${dateOnly(levelsAsOf)}` : ""}</p>
+        <ul>{drawn.map((level) => <li key={`${level.kind}-${level.price}`}><span className="chart-level-dash" aria-hidden /><span>{level.kind === "support" ? "Support" : "Resistance"}</span><strong className="num font-medium text-ink-2">{rupees(level.price)}</strong></li>)}</ul>
+        {levelsAsOf && last && levelsAsOf !== last.session && <p className="meta mt-2">The chart includes newer prices. Report levels stay fixed to {dateOnly(levelsAsOf)}.</p>}
+      </div>}
       {data?.adjusted && (
         <p className="meta mt-2">
           Prices before {dateOnly(data.adjustments.at(-1)?.session)} are

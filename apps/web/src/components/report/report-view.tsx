@@ -2,6 +2,7 @@
 
 import { ChevronDown, Download, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { dateOnly, MODE_LABEL, stamp } from "@/lib/format";
 import { EXPERIMENTAL } from "@/lib/report";
@@ -88,6 +89,7 @@ export function ReportView({
   history?: ReportSummary[];
 }) {
   const { launchRun } = useShell();
+  const [section, setSection] = useState("summary");
   const card = report.scorecard;
   const listing = report.pack?.listing;
   const symbol = listing?.symbol ?? report.request.symbol;
@@ -96,6 +98,16 @@ export function ReportView({
     report.final_synthesis?.status === "completed"
       ? report.final_synthesis.summary
       : "";
+
+  useEffect(() => {
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) setSection(entry.target.id);
+      }
+    }, { rootMargin: "-100px 0px -60% 0px" });
+    document.querySelectorAll("[data-report-section]").forEach((element) => observer.observe(element));
+    return () => observer.disconnect();
+  }, [report.report_id]);
 
   return (
     <EvidenceProvider pack={report.pack}>
@@ -119,11 +131,10 @@ export function ReportView({
         <span className="badge" data-tone="accent">
           {symbol}
         </span>
-        <span>As of {dateOnly(cutoff)}</span>
+        <span>Research as of {dateOnly(cutoff)}</span>
         <span className="text-ink-3">·</span>
         <span>{MODE_LABEL[report.request.mode]} run</span>
-        <span className="text-ink-3">·</span>
-        <span title={report.generated_at}>{stamp(report.generated_at)}</span>
+        {history.length < 2 && <span title={report.generated_at}>· {stamp(report.generated_at)}</span>}
         {card && !card.model_adjusted && <Badge>Code-only scorecard</Badge>}
         {dryRun && <Badge tone="bad">Dry run</Badge>}
         {report.status !== "completed" && (
@@ -144,39 +155,48 @@ export function ReportView({
           </div>
         </div>
       ) : (
-        <div className="mt-8 space-y-8">
-          <HorizonStrip card={card} />
-          <p className="meta -mt-3">{EXPERIMENTAL}</p>
-
-          {summary && (
-            <p className="display max-w-[60ch] text-lg text-ink-2 [text-wrap:pretty]">
-              <Cited text={summary} />
-            </p>
-          )}
-
-          <div className="report-grid">
-            <div className="report-sections min-w-0 space-y-6">
-              <Pillars card={card} />
-              <ProsCons report={report} />
-              <HorizonDetail card={card} />
-              <Constraints vetoes={report.vetoes} />
-              <Coverage coverage={report.coverage} />
-              <Analysis report={report} />
+        <div className="report-workspace">
+          <nav className="report-nav" aria-label="Report sections">
+            <div className="report-nav-company"><strong>{symbol}</strong><span>{MODE_LABEL[report.request.mode]} · {dateOnly(cutoff)}</span></div>
+            <div className="report-nav-links">
+              {([["summary", "Summary"], ["scores", "Scores"], ["outlook", "Outlook"], ["drivers", "Risks & drivers"], ["sources", "Sources"], ["analysis", "Full analysis"]] as const).map(([id, label]) => (
+                <a key={id} href={`#${id}`} onClick={() => setSection(id)} aria-current={section === id ? "location" : undefined}>{label}</a>
+              ))}
             </div>
-            <aside
-              aria-label="Price and levels"
-              className="report-sections min-w-0 space-y-6"
-            >
+          </nav>
+          <section id="summary" data-report-section className="report-overview" aria-label="Research summary">
+            <div className="report-takeaway">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="section-title">Research takeaway</h2>
+                <span className="meta">{card.model_adjusted ? "Evidence-led synthesis" : "From scoring rules"}</span>
+              </div>
+              {summary ? <p className="report-summary"><Cited text={summary} grouped /></p> : (
+                <p className="report-summary">This report scores the available company data. Explore each area below to see which rules moved the signals and the evidence behind them.</p>
+              )}
+              <HorizonStrip card={card} />
+              <p className="meta mt-4">{EXPERIMENTAL}</p>
+            </div>
+            <div className="report-price">
               <PriceChart
                 symbol={symbol}
                 levels={card.levels?.levels ?? []}
                 close={card.levels?.close}
+                levelsAsOf={card.levels?.as_of}
                 initialSessions={126}
-                height={320}
+                height={300}
               />
-              <Levels card={card} />
-            </aside>
+            </div>
+          </section>
+          <div className="report-detail-grid">
+            <div className="min-w-0 space-y-8">
+              <div id="scores" data-report-section className="report-surface"><Pillars card={card} /></div>
+              <div id="outlook" data-report-section className="report-surface"><HorizonDetail card={card} /></div>
+            </div>
+            <div className="report-surface min-w-0"><Levels card={card} /></div>
           </div>
+          <div id="drivers" data-report-section className="report-surface space-y-8"><ProsCons report={report} /><Constraints vetoes={report.vetoes} /></div>
+          <div id="sources" data-report-section className="report-surface"><Coverage coverage={report.coverage} /></div>
+          <div id="analysis" data-report-section className="report-surface"><Analysis report={report} /></div>
         </div>
       )}
     </EvidenceProvider>

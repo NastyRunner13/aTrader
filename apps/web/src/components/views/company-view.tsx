@@ -154,6 +154,7 @@ export function CompanyView({ symbol }: { symbol: string }) {
             symbol={symbol}
             levels={latestReport.data?.scorecard?.levels?.levels ?? []}
             close={latestReport.data?.scorecard?.levels?.close}
+            levelsAsOf={latestReport.data?.scorecard?.levels?.as_of}
             height={380}
           />
         </section>

@@ -12,9 +12,9 @@ type Found =
   | { kind: "shareholding"; item: EvidencePack["shareholding"][number] }
   | { kind: "news"; item: EvidencePack["news"][number] };
 
-type Context = { open: (id: string) => void; has: (id: string) => boolean };
+type Context = { open: (id: string) => void; openSources: (ids: string[]) => void; has: (id: string) => boolean };
 
-const EvidenceContext = createContext<Context>({ open: () => {}, has: () => false });
+const EvidenceContext = createContext<Context>({ open: () => {}, openSources: () => {}, has: () => false });
 
 const ID = /^[FMASN]\d+$/;
 const INLINE = /\[([FMASN]\d+)\]/g;
@@ -34,14 +34,19 @@ function indexPack(pack: EvidencePack | null): Map<string, Found> {
 export function EvidenceProvider({ pack, children }: { pack: EvidencePack | null; children: ReactNode }) {
   const index = useMemo(() => indexPack(pack), [pack]);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [sourceIds, setSourceIds] = useState<string[]>([]);
   const value = useMemo<Context>(
-    () => ({ open: setOpenId, has: (id) => index.has(id) }),
+    () => ({
+      open: (id) => { setSourceIds([]); setOpenId(id); },
+      openSources: (ids) => { setSourceIds(ids); setOpenId(ids[0] ?? null); },
+      has: (id) => index.has(id),
+    }),
     [index],
   );
   return (
     <EvidenceContext.Provider value={value}>
       {children}
-      <EvidenceDrawer found={openId ? (index.get(openId) ?? null) : null} id={openId} onClose={() => setOpenId(null)} />
+      <EvidenceDrawer found={openId ? (index.get(openId) ?? null) : null} id={openId} sources={sourceIds.map((id) => ({ id, title: evidenceTitle(index.get(id) ?? null) }))} onSelect={setOpenId} onClose={() => setOpenId(null)} />
     </EvidenceContext.Provider>
   );
 }
@@ -64,7 +69,12 @@ export function EvidenceChip({ id }: { id: string }) {
 }
 
 /** Text with `[F3]`-style citations turned into evidence chips, followed by any IDs not already inline. */
-export function Cited({ text, ids = [] }: { text: string; ids?: string[] }) {
+export function Cited({ text, ids = [], grouped = false }: { text: string; ids?: string[]; grouped?: boolean }) {
+  const { openSources } = useContext(EvidenceContext);
+  if (grouped) {
+    const sources = [...new Set([...text.matchAll(INLINE)].map((match) => match[1]!).concat(ids))];
+    return <>{text.replace(INLINE, "").replace(/\s+([.,;:])/g, "$1").trim()}{sources.length > 0 && <button type="button" className="source-count" onClick={() => openSources(sources)}>{sources.length} {sources.length === 1 ? "source" : "sources"}<ExternalLink size={12} aria-hidden /></button>}</>;
+  }
   const parts: ReactNode[] = [];
   const inline = new Set<string>();
   let last = 0;
@@ -101,7 +111,17 @@ const KIND_LABEL: Record<Found["kind"], string> = {
   news: "News headline",
 };
 
-function EvidenceDrawer({ found, id, onClose }: { found: Found | null; id: string | null; onClose: () => void }) {
+function evidenceTitle(found: Found | null): string {
+  if (!found) return "Unavailable evidence";
+  switch (found.kind) {
+    case "fact": case "metric": return found.item.label;
+    case "announcement": return found.item.category;
+    case "shareholding": return `Shareholding at ${dateOnly(found.item.period_end)}`;
+    case "news": return found.item.title;
+  }
+}
+
+function EvidenceDrawer({ found, id, sources, onSelect, onClose }: { found: Found | null; id: string | null; sources: { id: string; title: string }[]; onSelect: (id: string) => void; onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -124,9 +144,9 @@ function EvidenceDrawer({ found, id, onClose }: { found: Found | null; id: strin
       <div className="flex h-full flex-col">
         <header className="flex items-start justify-between gap-4 border-b border-line px-6 py-4">
           <div>
-            <p className="meta">{found ? KIND_LABEL[found.kind] : "Evidence"}</p>
+            <p className="meta">{found ? KIND_LABEL[found.kind] : "Evidence"} · {id}</p>
             <h2 id="evidence-title" className="mt-0.5 text-lg font-semibold">
-              {id ?? ""}
+              {evidenceTitle(found)}
             </h2>
           </div>
           <button type="button" className="btn btn-quiet btn-icon -mr-2" onClick={() => ref.current?.close()} aria-label="Close">
@@ -134,6 +154,12 @@ function EvidenceDrawer({ found, id, onClose }: { found: Found | null; id: strin
           </button>
         </header>
         <div className="flex-1 overflow-y-auto px-6 py-5">
+          {sources.length > 1 && <details className="evidence-sources mb-5" open>
+            <summary className="cursor-pointer font-medium">{sources.length} sources behind this statement</summary>
+            <div className="mt-3 space-y-1" role="group" aria-label="Statement sources">
+              {sources.map((source) => <button type="button" key={source.id} aria-pressed={id === source.id} onClick={() => onSelect(source.id)} className="evidence-source"><span>{source.title}</span><span className="meta">{source.id}</span></button>)}
+            </div>
+          </details>}
           {id && !found && <p className="prose-body">This ID is not part of the report’s evidence pack.</p>}
           {found && <EvidenceBody found={found} />}
         </div>
@@ -168,7 +194,6 @@ function EvidenceBody({ found }: { found: Found }) {
       const f = found.item;
       return (
         <>
-          <p className="display text-xl">{f.label}</p>
           <p className="score-figure mt-3 !text-2xl">{factValue(f.value, f.unit)}</p>
           {f.missing_reason && <p className="mt-2 text-warn-ink">Not reported: {f.missing_reason}</p>}
           <dl className="mt-5">
@@ -190,7 +215,6 @@ function EvidenceBody({ found }: { found: Found }) {
       const m = found.item;
       return (
         <>
-          <p className="display text-xl">{m.label}</p>
           <p className="score-figure mt-3 !text-2xl">{metricValue(m.value, m.unit)}</p>
           {m.detail && <p className="prose-body mt-2">{m.detail}</p>}
           <dl className="mt-5">
@@ -214,7 +238,6 @@ function EvidenceBody({ found }: { found: Found }) {
       const a = found.item;
       return (
         <>
-          <p className="display text-xl">{a.category}</p>
           <p className="prose-body mt-3">{a.summary}</p>
           <dl className="mt-5">
             <Row label="Published">{stamp(a.published_at)}</Row>
@@ -231,7 +254,6 @@ function EvidenceBody({ found }: { found: Found }) {
       const s = found.item;
       return (
         <>
-          <p className="display text-xl">Shareholding at {dateOnly(s.period_end)}</p>
           <dl className="mt-5">
             <Row label="Promoters">{s.promoter_pct == null ? "—" : `${s.promoter_pct}%`}</Row>
             <Row label="Public">{s.public_pct == null ? "—" : `${s.public_pct}%`}</Row>
@@ -247,7 +269,6 @@ function EvidenceBody({ found }: { found: Found }) {
       const n = found.item;
       return (
         <>
-          <p className="display text-xl">{n.title}</p>
           <dl className="mt-5">
             <Row label="Publisher">{n.domain}</Row>
             <Row label="Published">{stamp(n.published_at)}</Row>
