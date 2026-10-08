@@ -7,8 +7,9 @@ is omitted rather than estimated.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
+from itertools import pairwise
 
 from atrader.contracts import DerivedMetric, FinancialFact, StatementBasis
 
@@ -38,11 +39,28 @@ class _Quarters:
         return next((p for p in self.periods
                      if p.month == period_end.month and p.year == period_end.year - 1), None)
 
+    def series(self, metric: str, count: int) -> list[FinancialFact]:
+        """Comparable consecutive quarters, newest first; never bridge a missing period."""
+        periods = self.periods[:count]
+        facts = [self.get(metric, p) for p in periods]
+        if len(periods) != count or any(f is None for f in facts):
+            return []
+        known = [f for f in facts if f is not None]
+        if len({(f.isin, f.basis, f.unit) for f in known}) != 1:
+            return []
+        if any(f.value is None or not f.value.is_finite() or f.period_start is None
+               or not 80 <= (f.period_end - f.period_start).days + 1 <= 100 for f in known):
+            return []
+        if any(newer.period_start != older.period_end + timedelta(days=1)
+               for newer, older in pairwise(known)):
+            return []
+        return known
+
 
 def fundamental_metrics(facts: list[FinancialFact], last_close: float | None,
                         close_as_of: date | None) -> list[DerivedMetric]:
     quarter_facts = [f for f in facts if f.duration == "quarter"]
-    if not quarter_facts:
+    if not quarter_facts or len({(f.isin, f.basis) for f in facts}) != 1:
         return []
     quarters = _Quarters(quarter_facts)
     latest = quarters.periods[0]
@@ -84,6 +102,26 @@ def fundamental_metrics(facts: list[FinancialFact], last_close: float | None,
     if year_ago:
         out.extend(_margin_change(quarters, latest, year_ago, suffix))
 
+    for name, label, metric in (("revenue", "Revenue", REVENUE),
+                                 ("profit", "Net profit", pat_metric),
+                                 ("eps", "Basic EPS", EPS)):
+        series = quarters.series(metric, 8)
+        if not series:
+            continue
+        current = sum((f.value for f in series[:4] if f.value is not None), Decimal(0))
+        prior = sum((f.value for f in series[4:] if f.value is not None), Decimal(0))
+        if prior <= 0:
+            continue
+        out.append(DerivedMetric(
+            name=f"{name}_ttm_yoy", label=f"{label} growth, trailing year vs prior year",
+            value=round(float((current / prior - 1) * 100), 2), unit="%", as_of=latest,
+            formula=f"(sum({name}, latest 4 quarters) / sum({name}, prior 4 quarters) - 1) * 100",
+            inputs=tuple(f.evidence_id for f in series),
+            quality_flags=("two reported years are not through-cycle normalised earnings",)
+            + (("reported per-share basis; corporate-action comparability needs review",)
+               if metric == EPS else ()),
+        ))
+
     out.extend(_valuation(quarters, latest, facts, last_close, close_as_of))
     return out
 
@@ -113,16 +151,16 @@ def _valuation(quarters: _Quarters, latest: date, facts: list[FinancialFact],
     if last_close is None or close_as_of is None:
         return []
     out: list[DerivedMetric] = []
-    last_four = quarters.periods[:4]
-    eps = [quarters.get(EPS, p) for p in last_four]
-    consecutive = len(last_four) == 4 and (last_four[0] - last_four[3]).days < 300
-    if consecutive and all(e is not None and e.value is not None for e in eps):
+    eps = quarters.series(EPS, 4)
+    if eps:
         ttm_eps = sum((e.value for e in eps if e and e.value is not None), Decimal(0))
         ids = tuple(e.evidence_id for e in eps if e)
         out.append(DerivedMetric(
             name="eps_ttm", label="Basic EPS, trailing four quarters", value=float(ttm_eps),
             unit="INR/share", as_of=latest, formula="sum(basic EPS, last 4 quarters)", inputs=ids,
             category="valuation",
+            quality_flags=("reported per-share basis; corporate-action comparability "
+                           "needs review",),
         ))
         if ttm_eps > 0:
             out.append(DerivedMetric(

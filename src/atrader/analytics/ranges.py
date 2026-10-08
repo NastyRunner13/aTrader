@@ -9,7 +9,6 @@ uncertainty; neither predicts direction.
 from __future__ import annotations
 
 import math
-from statistics import mean
 from typing import NamedTuple
 
 from atrader.contracts import Confidence, EvidencePack, Horizon, PriceRange
@@ -53,10 +52,10 @@ def _volatility_band(metrics: dict[str, MetricValue], horizon: Horizon) -> Price
 def _scenarios(metrics: dict[str, MetricValue]) -> PriceRange | None:
     eps, pe = metrics.get("eps_ttm"), metrics.get("pe_ttm")
     high, low = metrics.get("high_52w"), metrics.get("low_52w")
-    growth = [g for g in (metrics.get("revenue_yoy"), metrics.get("profit_yoy")) if g]
+    growth = metrics.get("eps_ttm_yoy")
     if not (eps and pe and high and low and growth) or eps.value <= 0:
         return None
-    base = max(0.0, min(20.0, mean(g.value for g in growth))) / 100
+    base = max(-10.0, min(20.0, growth.value)) / 100
     # Bear: earnings stall or shrink and the multiple de-rates by at least a fifth, so the
     # bear case always sits below today's price. Bull: faster growth at the year's top
     # multiple.
@@ -71,9 +70,10 @@ def _scenarios(metrics: dict[str, MetricValue]) -> PriceRange | None:
                 f"{rates[2]:.0%} a year for two years, times a P/E of {multiples[0]:.1f}x / "
                 f"{multiples[1]:.1f}x / {multiples[2]:.1f}x (bear: the lower of the 52-week-low "
                 "multiple and a 20% de-rating; base: today's; bull: the 52-week-high "
-                "multiple). Base growth averages the latest quarter's revenue and profit growth "
-                "year on year, held between 0% and 20%. One quarter is a thin base, so treat "
-                "this as a rough sketch."),
+                "multiple). Base growth compares EPS across two non-overlapping trailing "
+                "years, held between -10% and 20%. These are our assumptions, not guidance "
+                "or consensus. Earnings are not through-cycle normalised; per-share "
+                "comparability needs review. Dividends are excluded."),
         evidence_ids=[eps.evidence_id, pe.evidence_id, low.evidence_id, high.evidence_id,
-                      *(g.evidence_id for g in growth)],
+                      growth.evidence_id],
     )

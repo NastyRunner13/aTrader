@@ -26,7 +26,6 @@ LOW_SIGNAL_CATEGORIES = frozenset({
     "Trading Window",
     "Certificate under SEBI (Depositories and Participants) Regulations, 2018",
     "Shareholders meeting",
-    "Updates",
 })
 
 

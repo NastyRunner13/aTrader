@@ -20,6 +20,16 @@ score and signal. Explain it for a reader who wants the answer, not the whole an
 - adjustment: you may move a horizon's score by up to 5 points when the debate or risk
   reviews show the draft misses something material; give adjustment_reason. Usually 0.
 - unresolved: disagreements the evidence could not settle and missing data that matters.
+- For the 2y note, use up to three decisive thesis assumptions as drivers, pair them
+  with observable failure conditions in down_if, and name the next disclosed event
+  that could resolve uncertainty in up_if. State when the next event is unknown.
+- Separate business quality from price attractiveness. Explain the range of outcomes
+  and room for estimation error; a trailing P/E discount is not a measured margin of
+  safety. Distinguish guidance, consensus, our scenarios and price-implied expectations.
+- Weight business economics and valuation most in the 2y discussion; institutional
+  flows, when available, inform market context, particularly 1m. Do not add flow bonuses
+  or restore quarterly PEG/promoter-percentage bonuses removed from the scoring rules.
+- Portfolio concentration and shared exposures cannot be assessed without portfolio data.
 - Keep disagreement visible; do not average contradictions into false certainty.
 - Code applies the listed constraints after you answer."""
 

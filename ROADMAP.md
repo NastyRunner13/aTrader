@@ -1,10 +1,16 @@
 # aTrader roadmap
 
-Last updated **5 October 2026**. Feature IDs (F01–F37) come from [docs/03](docs/03-feature-map.md) and delivery stages from [docs/09](docs/09-validation-and-roadmap.md). Update this file whenever a feature changes status.
+Last updated **8 October 2026**. Feature IDs (F01–F37) come from [docs/03](docs/03-feature-map.md) and delivery stages from [docs/09](docs/09-validation-and-roadmap.md). Update this file whenever a feature changes status.
 
 **Where we are:** the first working version runs end to end on live NSE data **with a real model**, and ends in a **signal card**: 0–100 scores and signals for 1 month, 6 months and 2 years. Agents in the same step run in parallel. On 4 October 2026, a compact run on L&T made 6 calls, all valid on the first attempt, at zero cost, in 52 s of model time (about 88 s before the parallel graph). On 5 October the scorecard moved to `scorecard/2`: technical rules are grouped and capped, valuation compares the P/E with the NSE sector index, volume and delivery flows are scored, and the card shows price levels and the closes that would flip each signal. The scoring rules and weights are still starting priors; the next step is to validate them with the `--cutoff` backtest (M2) and run the other nine pilot companies.
 
 Status key: ✅ done · 🟡 partial · ⬜ not started · ⏸ deferred by decision
+
+**Investor-research foundation (8 October):** `scorecard/3` removes quarterly PEG and
+unexplained promoter-percentage scoring. Eight-quarter comparisons, reverse EPS
+sensitivity, content review of broad Updates, expanded agent responsibilities and
+explicit institutional-data gaps are implemented. Financial-statement depth and
+institutional collectors remain pending; see [the implementation checklist](docs/11-investor-research.md).
 
 ## Completed so far
 
@@ -47,7 +53,7 @@ Status key: ✅ done · 🟡 partial · ⬜ not started · ⏸ deferred by decis
 **Product and quality**
 - CLI: `research`, `resume`, `ingest`, `search`, `models`, `usage`, `runs`.
 - Reports in Markdown and JSON, with coverage, a results table, metrics, catalysts, debate, model calls, filings used and limitations.
-- 98 offline tests on synthetic data; ruff and mypy (strict) clean. Baseline committed on `main`; scorecard work on `feature/scorecard-signals`.
+- Offline regression tests use synthetic data and fake model calls; backend checks are documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Feature status
 
@@ -132,6 +138,7 @@ Ordered by dependency. Each milestone ends with something you can run.
 - **Exit:** a measured answer to "is full mode worth 2× the calls?"
 
 ### M3 — Indian data depth (F04, F05, F07, F08, F09, F17)
+- [x] Investor-research foundation: eight-quarter comparisons, reverse EPS sensitivity, removal of quarterly PEG/promoter-percentage scoring, Updates retained, and explicit missing institutional coverage (8 Oct). Remaining ten-question research and institutional requirements are tracked in [docs/11](docs/11-investor-research.md).
 - [ ] Balance sheet and cash flow from half-yearly XBRL; bank/NBFC line items.
 - [ ] Order-award extraction from announcement PDFs: amount or range, status, customer, execution period, with page citations.
 - [ ] Reported backlog totals from results presentations.
@@ -139,7 +146,9 @@ Ordered by dependency. Each milestone ends with something you can run.
 - [ ] Segment revenue and results from XBRL dimensions.
 - [x] Sector index relative strength and sector P/E (5 Oct).
 - [ ] FII and mutual-fund holdings per stock, and pledges, from the quarterly shareholding XBRL (the `xbrl` link is already in the shareholding API).
-- [ ] Daily collector for market-wide FII/DII cash flows and participant-wise futures OI, as a market-regime input (never a stock's own score).
+- [ ] Daily market-wide FPI/DII gross purchases, sales and net activity with 5/20/60-session trends; distinguish NSE-only/combined exchanges and provisional/custodian-confirmed series.
+- [ ] Fortnightly sector FPI net investment separate from assets under custody; detailed company ownership from exchange XBRL and mutual-fund disclosures, adjusted for corporate actions. Evaluate new weights before using them.
+- [ ] Participant-wise futures OI as market context, preserving its separation from cash activity.
 - [ ] F&O open-interest build-up for F&O stocks; bulk and block deals collected daily.
 - **Exit:** the order-backlog section works for at least one EPC company.
 
@@ -176,7 +185,7 @@ F13 Reddit, F14 Hindi sources, F34–F35 depth and derivatives, and F36 public d
 - GDELT rate-limits (HTTP 429); news is then missing for that run.
 - A full `ingest` takes 30–40 minutes the first time (about 7 s per trading day at a polite rate). The first run after the delivery change also fetches ~100 delivery files (about 2–3 minutes).
 - Sector comparisons use today's industry list, not a point-in-time one. A large company can dominate its own sector index (L&T in Nifty Construction), which makes the sector P/E partly a comparison with itself.
-- The 2-year base scenario still holds today's P/E and caps growth at 20%, so every fast grower gets close × 1.2² (+44%).
+- The 2-year base scenario uses trailing-year EPS growth (eight comparable quarters), holds today's P/E and caps growth at 20%, so capped growers still get approximately close × 1.2² (+44%). This remains a sensitivity sketch, not through-cycle valuation; missing comparable history suppresses the range.
 - In `--dry-run`, model-call records are kept in memory only, so a resumed dry run lists only the calls made after resuming.
 - The issuer/listing split from docs/07 is collapsed onto the ISIN until BSE mapping arrives.
 - Cancel (web app and API) stops new steps from starting; a model call already in flight still finishes. On Windows, closing a terminal does not always stop the Python process, which can keep running until its call cap (this happened once on 4 October: 8 wasted calls, cap held). Stop a run from the app instead.

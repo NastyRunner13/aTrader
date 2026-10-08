@@ -27,15 +27,16 @@ from atrader.graph.research_graph import MODES, ResearchGraph, RunPaused
 from atrader.graph.setup import GraphSetup
 from atrader.llm import LLM, QuotaExhausted, RunBudget
 from atrader.llm.fake import FakeGateway, demo_responder
-from tests.conftest import StaticEvidence, make_bars, make_pack
+from tests.conftest import StaticEvidence, make_bars, make_index, make_pack
 
 EVIDENCE_ID = re.compile(r"\[([FMASN]\d+)\]")
 
 
 def _run(mode: Mode, pack=None, responder=None):
     gateway = FakeGateway("run-test", responder, budget=RunBudget(MODES[mode]["max_calls"]))
+    evidence = StaticEvidence(pack or make_pack(indices=(make_index(),)))
     setup = GraphSetup(LLM(gateway, "quick"), LLM(gateway, "deep"),
-                       create_data_steward(StaticEvidence(pack or make_pack())),
+                       create_data_steward(evidence),
                        ConditionalLogic(MODES[mode]["debate_rounds"]))
     graph = setup.setup_graph(mode).compile()
     request = ResearchRequest(symbol="TESTCO", mode=mode)
@@ -130,7 +131,7 @@ def test_cap_vetoes_hold_scores_at_neutral():
                 note.update(adjustment=5, adjustment_reason="test")
         return answer
 
-    short_history = make_pack(bars=make_bars(sessions=40))
+    short_history = make_pack(bars=make_bars(sessions=40), indices=(make_index(),))
     state, _ = _run(Mode.COMPACT, short_history, eager)
     six_months = state["scorecard"].horizon(Horizon.SIX_MONTHS)
     assert six_months.score == 55 and six_months.signal == Signal.NEUTRAL
@@ -202,6 +203,9 @@ def test_prompts_carry_rules_scores_and_fence_untrusted_text():
     assert "<<<DATA" in user and "<<<END DATA>>>" in user
     assert "### technical:" in captured["market_analyst"][1]
     assert "### valuation:" in captured["fundamentals_analyst"][1]
+    # Business/governance research must receive the disclosure evidence it is asked to read.
+    assert "[A1]" in captured["fundamentals_analyst"][1]
+    assert "Percentages alone" in captured["fundamentals_analyst"][1]
     assert "## Draft scorecard" in captured["portfolio_manager"][1]
 
 
@@ -226,7 +230,8 @@ def test_data_only_mode_gives_a_code_only_scorecard(settings):
     card = report.scorecard
     assert card is not None and not card.model_adjusted
     assert card.pillar(Pillar.NEWS).score is None
-    assert card.horizon(Horizon.ONE_MONTH).score is not None  # 70% of the weight is scored
+    assert card.horizon(Horizon.ONE_MONTH).score is not None  # 60% covered without valuation
+    assert card.horizon(Horizon.TWO_YEARS).score is None  # only 50% without valuation or news
     assert card.levels is not None and card.levels.levels and card.levels.flips
     text = (settings.reports_dir / f"{report.report_id}.md").read_text(encoding="utf-8")
     assert "code-only scorecard" in text and "## Pros" in text  # pros from the rules

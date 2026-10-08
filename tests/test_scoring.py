@@ -29,7 +29,7 @@ from atrader.contracts import (
     Veto,
 )
 from atrader.verification import verify_events
-from tests.conftest import make_bars, make_facts, make_pack
+from tests.conftest import make_bars, make_facts, make_pack, make_two_year_facts
 
 
 def _pillars(**scores: int | None) -> dict[str, PillarScore]:
@@ -77,8 +77,8 @@ def test_growth_and_valuation_from_reported_results():
     # revenue +20% and profit +36% YoY with a wider margin: clearly above par
     assert growth.score is not None and growth.score > 70
     assert {i[0] for f in growth.factors for i in f.evidence_ids} <= {"M", "S", "F"}
-    # no Nifty P/E in the synthetic pack: only the P/E-to-growth rule applies
-    assert valuation.score is not None and valuation.confidence == Confidence.LOW
+    # Quarterly growth no longer substitutes for missing valuation comparisons.
+    assert valuation.score is None and valuation.confidence == Confidence.LOW
     assert scores["news"].score is None  # needs the news analyst
 
 
@@ -170,7 +170,7 @@ def test_volatility_range_matches_its_formula():
 
 
 def test_two_year_scenarios_are_ordered_and_low_confidence():
-    pack = make_pack()  # fast growth (revenue +20%, profit +36%): the bear case must still fall
+    pack = make_pack(facts=make_two_year_facts())
     close = next(m.value for m in pack.metrics if m.name == "close")
     scenario = price_range(pack, Horizon.TWO_YEARS)
     assert scenario is not None and scenario.method == "scenario"
@@ -178,3 +178,4 @@ def test_two_year_scenarios_are_ordered_and_low_confidence():
     assert close is not None and scenario.low < close * 0.8 + 1e-9
     assert scenario.confidence == Confidence.LOW
     assert price_range(make_pack(facts=[]), Horizon.TWO_YEARS) is None  # no EPS
+    assert price_range(make_pack(), Horizon.TWO_YEARS) is None  # only five quarters

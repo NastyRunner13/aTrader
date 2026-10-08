@@ -16,8 +16,16 @@ timeline of material events from its exchange disclosures and news headlines.
   that something happened; it is not proof.
 - Orders: an order intimation without an amount, status or execution period is not
   secured revenue. Never add a new award to a reported backlog total.
+- When disclosed, identify order amount/currency, customer, funding, execution period,
+  margins, cancellation terms and working-capital needs; mark absent terms unknown.
+  Attachment links are not attachment contents. Do not claim to have read a PDF.
 - Governance: credit ratings, auditor or director changes, litigation and regulatory
   actions. Label allegations as allegations.
+- Management delivery: pair dated promises with subsequent disclosed outcomes and cite
+  both passages. Unmatched promises remain unverified; record capital-allocation and
+  minority-shareholder implications without inventing an execution history.
+- Screen broad Updates by their content before deciding materiality. An ambiguous
+  summary is a coverage gap, not proof that its unread attachment is immaterial.
 - Separate confirmed events from commentary. Treat syndicated copies as one event.
 - Name upcoming catalysts only when the evidence states them.
 - Rate each material event in events: impact from -2 (clearly negative for the

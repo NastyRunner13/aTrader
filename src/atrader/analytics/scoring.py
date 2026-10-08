@@ -43,7 +43,7 @@ from atrader.contracts import (
     Veto,
 )
 
-VERSION = "scorecard/2"
+VERSION = "scorecard/3"
 
 # Percent weight of each area per horizon. Short horizons lean on price action and
 # news; long ones on the business and the price paid for it.
@@ -230,21 +230,12 @@ def _growth_quality(pack: EvidencePack, m: dict[str, MetricValue]) -> PillarScor
     if (other := m.get("other_income_share")) and other.value > 15:
         rules.add(f"Other income is {other.value:.0f}% of pre-tax profit",
                   -6 if other.value > 25 else -3, other.evidence_id)
-    holdings = sorted((s for s in pack.shareholding if s.promoter_pct is not None),
-                      key=lambda s: s.period_end)
-    if len(holdings) >= 2:
-        first, last = holdings[0], holdings[-1]
-        change = (last.promoter_pct or 0) - (first.promoter_pct or 0)
-        if change <= -2 or change >= 1:
-            rules.add(f"Promoter holding {'down' if change < 0 else 'up'} {abs(change):.1f} pp "
-                      f"since {first.period_end:%b %Y}", -4 if change < 0 else 3,
-                      first.evidence_id, last.evidence_id)
-
     latest = max(f.period_end for f in pack.facts)
     stale = (pack.cutoff - latest).days > STALE_RESULTS_DAYS
     confidence = Confidence.LOW if stale or not (revenue and profit) else Confidence.MEDIUM
-    return rules.result(confidence, note="one quarter's year-on-year comparison; multi-year "
-                        "history is not loaded yet")
+    return rules.result(confidence, note="growth rules use one quarter's year-on-year "
+                        "comparison; capital efficiency and cash conversion are not scored. "
+                        "Ownership percentages alone do not establish purchases or sales.")
 
 
 def _valuation(m: dict[str, MetricValue]) -> PillarScore:
@@ -257,7 +248,7 @@ def _valuation(m: dict[str, MetricValue]) -> PillarScore:
         rules.add("Loss-making over the last four quarters", -25, eps.evidence_id)
         return rules.result(Confidence.MEDIUM)
 
-    pe, profit = m.get("pe_ttm"), m.get("profit_yoy")
+    pe = _positive(m.get("pe_ttm"))
     market, sector = _positive(m.get("benchmark_pe")), _positive(m.get("sector_pe"))
     if pe and sector:
         # The sector is the like-for-like comparison. The market comparison stays at a
@@ -273,18 +264,10 @@ def _valuation(m: dict[str, MetricValue]) -> PillarScore:
         rules.add(f"P/E {pe.value:.1f}x vs {market.detail} {market.value:.1f}x",
                   _pe_points(pe.value, market.value, 12, 15), pe.evidence_id,
                   market.evidence_id)
-    if pe and profit:
-        if profit.value <= 0:
-            rules.add(f"P/E {pe.value:.1f}x while profit fell {profit.value:.1f}%", -5,
-                      pe.evidence_id, profit.evidence_id)
-        else:
-            peg = pe.value / profit.value
-            points = 8 if peg < 1 else 4 if peg < 1.5 else 0 if peg <= 2.5 else -5
-            rules.add(f"P/E to profit growth {peg:.1f} (one quarter's growth)", points,
-                      pe.evidence_id, profit.evidence_id)
     if not rules.factors:
         return PillarScore(pillar=Pillar.VALUATION,
-                           note="no index P/E or profit growth to compare the P/E with")
+                           note="needs a positive price/earnings ratio and index P/E; "
+                           "quarterly profit growth is not a valuation benchmark")
     if sector:
         note = (f"P/E is compared with {sector.detail} (NSE-published, today's industry "
                 "classification; a large company can dominate its own sector index) and the "
@@ -292,8 +275,8 @@ def _valuation(m: dict[str, MetricValue]) -> PillarScore:
     else:
         note = ("P/E is compared with the market only (no sector index for this stock); "
                 "own-history comparison is not built yet")
-    return rules.result(Confidence.MEDIUM if pe and (sector or market) else Confidence.LOW,
-                        note=note)
+    return rules.result(Confidence.LOW, note=note + "; earnings are trailing, not "
+                        "through-cycle normalised; no PEG or institutional-flow bonus")
 
 
 def _positive(metric: MetricValue | None) -> MetricValue | None:

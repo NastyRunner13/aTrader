@@ -18,8 +18,16 @@ explain them.
   stock's sector index.
 - Volume and delivery: delivered and traded volume on up days versus down days, the
   delivery share against its recent norm, and the volume EMA trend. Read these as
-  accumulation or distribution. They do not say who traded: per-stock FII flows are
-  not in this data.
+  participation consistent with possible accumulation or distribution, not identified
+  buyers or sellers. Keep four datasets distinct: market-wide FPI/DII cash activity,
+  sector FPI investment, company institutional ownership, and volume/delivery.
+  The first three are currently missing; never infer them from volume or delivery.
+- For future institutional evidence: NSE-only and combined-exchange activity are separate
+  scopes; provisional exchange and custodian-confirmed series are separate. Sector net
+  investment is not assets under custody. Company position value can rise through price
+  appreciation, and ownership percentage can fall through dilution without selling.
+  Market-wide buying does not establish buying in this company; derivatives may hedge
+  cash positions. Institutional activity is context, not an endorsement or score bonus.
 - A chart signal counts only as its rule defines it. Do not invent patterns.
 - Price levels: name the nearest support and resistance zones, the moving averages
   and VWAPs near the price, and the close that breaks the nearest support, using the

@@ -7,6 +7,7 @@ same way.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from math import isfinite, sqrt
 
 from atrader.analytics.flows import flow_metrics
 from atrader.analytics.fundamentals import fundamental_metrics
@@ -42,6 +43,28 @@ def pack_metrics(bars: Sequence[PriceBar], facts: Sequence[FinancialFact],
                 name=name, label=f"{index.name} P/E (as published by NSE)", value=index.pe,
                 unit="x", as_of=index.pe_as_of, formula="published by NSE indices",
                 inputs=("nse.index_close",), category="market", detail=index.name))
+    by_name = {m.name: m for m in metrics}
+    pe = by_name.get("pe_ttm")
+    reference = next((by_name[name] for name in ("sector_pe", "benchmark_pe")
+                      if name in by_name and by_name[name].value is not None
+                      and isfinite(by_name[name].value or 0) and (by_name[name].value or 0) > 0),
+                     None)
+    if pe and pe.value is not None and isfinite(pe.value) and pe.value > 0 \
+            and reference and reference.value and last:
+        # An explicit sensitivity assumption, not management guidance or a forecast.
+        annual_return = 0.10
+        metrics.append(DerivedMetric(
+            name="price_implied_eps_growth_2y", label="EPS growth required for a 10% annual return",
+            value=round((sqrt(pe.value / reference.value) * (1 + annual_return) - 1) * 100, 2),
+            unit="%", as_of=last.session, category="valuation",
+            formula="((pe_ttm / assumed_exit_pe) ** (1 / 2) * 1.10 - 1) * 100",
+            inputs=("M:pe_ttm", f"M:{reference.name}"),
+            detail=f"Assumptions: 2 years, 10% annual price return, exit P/E "
+                   f"{reference.value:.2f}x ({reference.detail}, published {reference.as_of}); "
+                   "dividends excluded. Compare with reported growth, not a forecast.",
+            quality_flags=("exit multiple and required return are our assumptions",
+                           "trailing EPS is not normalised; no cash-flow or reinvestment model"),
+        ))
     return resolve_metric_ids(metrics)
 
 

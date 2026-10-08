@@ -57,7 +57,7 @@ def make_facts() -> list[FinancialFact]:
     eps = [5.5, 5.9, 6.25, 6.8, 7.5]
     facts = []
     for i, end in enumerate(quarters):
-        start = (end.replace(day=1) - timedelta(days=62)).replace(day=1)
+        start = end.replace(month=end.month - 2, day=1)
         filed = datetime(end.year, end.month, end.day, 18, 0, tzinfo=IST) + timedelta(days=40)
         source = SourceRef(provider="test.xbrl", url=f"https://example.invalid/{end}.xml",
                            published_at=filed)
@@ -86,6 +86,18 @@ def make_index(name: str = "Nifty 50", role: str = "benchmark", *, sessions: int
     closes = tuple((d, 20_000 * math.exp(drift * i)) for i, d in enumerate(days))
     return IndexSeries(name=name, role=role, closes=closes, pe=pe,  # type: ignore[arg-type]
                        pe_as_of=days[-1] if pe is not None else None)
+
+
+def make_two_year_facts() -> list[FinancialFact]:
+    facts = make_facts()
+    older = [f.model_copy(update={
+        "period_start": f.period_start.replace(year=f.period_start.year - 1),
+        "period_end": f.period_end.replace(year=f.period_end.year - 1),
+        "value": f.value / Decimal("1.1"),
+        "filed_at": f.filed_at.replace(year=f.filed_at.year - 1),
+    }) for f in facts if date(2025, 9, 30) <= f.period_end <= date(2026, 3, 31)]
+    return [f.model_copy(update={"evidence_id": f"F{i}"})
+            for i, f in enumerate(older + facts, 1)]
 
 
 def make_pack(*, bars: list[PriceBar] | None = None, facts: list[FinancialFact] | None = None,

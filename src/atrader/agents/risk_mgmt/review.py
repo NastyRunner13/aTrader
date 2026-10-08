@@ -11,6 +11,8 @@ def review_scorecard(llm, state, perspective, role):
     pack = state["pack"]
     evidence = context.join(
         context.company(pack),
+        context.financials(pack),
+        context.announcements(pack),
         context.metrics(pack, "fundamental", "valuation", title="Fundamentals and valuation"),
         context.metrics(pack, "technical", "pattern", "liquidity",
                         title="Technicals and liquidity"),

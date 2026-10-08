@@ -219,9 +219,9 @@ The technical, growth and quality, and valuation areas start at 50 before eviden
 
 Missing areas are excluded and the remaining weights are redistributed. **Below 60% weighted coverage, no signal is issued.** Vetoes for stale prices, short histories, old results, or low liquidity can cap signals at Neutral or below; missing core data can withhold them altogether.
 
-Technical rule groups are capped to reduce repeated counting of the same price move. Valuation uses the stock's NSE sector index first and the Nifty 50 as fallback. See the [scoring implementation](src/atrader/analytics/scoring.py) for the exact rules.
+Technical rule groups are capped to reduce repeated counting of the same price move. Valuation uses the stock's NSE sector index first and the Nifty 50 as fallback. `scorecard/3` removes single-quarter PEG and promoter-percentage bonuses or penalties. A positive-earnings company without a valid index P/E comparison has no valuation score. See the [scoring implementation](src/atrader/analytics/scoring.py) for the exact rules.
 
-**Ranges describe uncertainty.** The 1- and 6-month ranges use historical volatility; 2-year ranges use bear/base/bull EPS × P/E scenarios. They are not forecasts. Price levels describe past trading, and signal-flip closes re-score a hypothetical next close with other inputs fixed. These are not entries, stops, or targets.
+**Ranges describe uncertainty.** The 1- and 6-month ranges use historical volatility; 2-year ranges use bear/base/bull EPS × P/E scenarios only when eight comparable quarters support a trailing-year EPS growth comparison. They are not forecasts. A separate reverse earnings sensitivity shows the EPS growth required for an assumed 10% annual price return and sector/market exit multiple, with cited inputs and explicit assumptions. Price levels describe past trading, and signal-flip closes re-score a hypothetical next close with other inputs fixed. These are not entries, stops, or targets.
 
 ### Data sources
 
@@ -254,6 +254,8 @@ Runtime data defaults to the per-user application-data directory (`%LOCALAPPDATA
 The frontend connects to port 8000 on its own hostname by default. `NEXT_PUBLIC_API_URL` can override that base URL when you configure a different local setup. The API listens on loopback by default, restricts accepted hosts, and checks origins for state-changing requests.
 
 ## Development
+
+Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branch names, commit structure and review expectations.
 
 ```powershell
 # Backend: offline tests and lint
@@ -337,6 +339,7 @@ Start with **[ROADMAP.md](ROADMAP.md)** for completed work, partial features, kn
 | [08 · Free operation and OpenRouter](docs/08-free-operation-and-openrouter.md) | Model selection, budgets, and failure handling. |
 | [09 · Validation and roadmap](docs/09-validation-and-roadmap.md) | Acceptance gates and evaluation plans. |
 | [10 · Source register](docs/10-source-register.md) | Primary references and verification limits. |
+| [11 · Investor research](docs/11-investor-research.md) | Implemented research safeguards, agent responsibilities, and remaining financial/institutional data work. |
 
 ## Current limits
 

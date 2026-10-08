@@ -47,7 +47,7 @@ from atrader.timeutil import end_of_day_ist, now_utc, today_ist
 
 logger = logging.getLogger(__name__)
 
-QUARTERS_OF_RESULTS = 5  # latest + four earlier: enough for YoY and trailing EPS
+QUARTERS_OF_RESULTS = 8  # two non-overlapping trailing years, when available
 MAX_ANNOUNCEMENTS = 25
 MAX_SHAREHOLDING = 4
 MAX_NEWS = 20
@@ -112,6 +112,22 @@ class NseEvidenceBuilder:
         self._progress("news")
         news, news_coverage = self._news(listing, cutoff)
         coverage.append(news_coverage)
+
+        for category, detail in (
+            ("business_economics", "Structured segments, customer concentration, competitive "
+             "advantage and reinvestment economics are not collected yet."),
+            ("financial_resilience", "Cash-flow statements, debt maturities and bank/NBFC "
+             "asset-quality and funding metrics are not collected yet."),
+            ("institutional_market_activity", "Daily FPI/DII cash purchases, sales and "
+             "5/20/60-session trends are not collected; NSE-only and combined exchanges, "
+             "provisional and custodian-confirmed series must remain separate."),
+            ("institutional_sector_activity", "Fortnightly sector FPI net investment and "
+             "assets under custody are not collected; holding-value changes are not flows."),
+            ("institutional_ownership", "Detailed company FPI and mutual-fund shares and "
+             "percentages are not collected; volume/delivery cannot identify institutions."),
+        ):
+            coverage.append(CoverageEntry(category=category, status=Coverage.NOT_REQUESTED,
+                                          detail=detail))
 
         coverage.append(CoverageEntry(category="macro", status=Coverage.NOT_REQUESTED,
                                       detail="Macro/geopolitics adapters (RBI, MoSPI) are not "
@@ -279,12 +295,18 @@ class NseEvidenceBuilder:
         boundary = end_of_day_ist(cutoff)
         eligible = [a for a in items if a.published_at <= boundary]
         routine = [a for a in eligible if a.category in nse_announcements.LOW_SIGNAL_CATEGORIES]
-        kept = [a for a in eligible if a not in routine][:MAX_ANNOUNCEMENTS]
+        candidates = sorted((a for a in eligible if a not in routine),
+                            key=lambda a: a.published_at, reverse=True)
+        kept = candidates[:MAX_ANNOUNCEMENTS]
+        truncated = len(candidates) - len(kept)
         orders = sum(1 for a in kept if a.category in nse_announcements.ORDER_CATEGORIES)
         detail = (f"{len(kept)} disclosures in {self._settings.announcement_lookback_days} days "
                   f"({orders} order/contract intimations); {len(routine)} routine filings "
-                  "omitted from prompts")
-        status = Coverage.AVAILABLE if eligible else Coverage.MISSING
+                  f"omitted from prompts; {truncated} additional disclosures omitted by "
+                  "the prompt limit. Broad Updates are retained for content review; "
+                  "attachment contents are not loaded.")
+        status = (Coverage.PARTIAL if truncated else Coverage.AVAILABLE if eligible
+                  else Coverage.MISSING)
         return kept, CoverageEntry(category="announcements", status=status, detail=detail,
                                    as_of=cutoff)
 
