@@ -1,168 +1,351 @@
-# aTrader — Indian equity research agents
+<div align="center">
+  <img src="apps/web/src/app/icon.svg" alt="aTrader" width="64" height="64">
+  <h1>aTrader</h1>
+  <p><strong>Find the signal. Know the why.</strong></p>
+  <p>Evidence-linked research for Indian equities.<br>Three time horizons. Traceable scores. A local workspace.</p>
+  <p><sub>Python 3.12+ · LangGraph · FastAPI · Next.js · SQLite · OpenRouter</sub></p>
+  <p>
+    <a href="#workspace">Workspace</a> ·
+    <a href="#quick-start">Quick start</a> ·
+    <a href="#research-modes">Research modes</a> ·
+    <a href="#how-it-works">How it works</a> ·
+    <a href="#development">Development</a> ·
+    <a href="#documentation">Documentation</a>
+  </p>
+</div>
 
-Status (5 October 2026): **first working version, with a signal card and a local web app.** A Python + LangGraph command-line app researches one NSE-listed company. It runs on official NSE data, uses agents structured like [TradingAgents](https://github.com/TauricResearch/TradingAgents), cites evidence for each claim and calls only free OpenRouter models. Each run ends in a one-screen **signal card**: a 0–100 score and signal for 1 month, 6 months and 2 years, scores by area, pros and cons, price ranges, **price levels** (support and resistance zones, moving averages, anchored VWAPs, the heaviest-traded band) and the **closes that would flip each signal**. A local FastAPI server and a Next.js web app sit on top of it (see Web API and Web app below).
+---
 
-The scores are experimental: the rules and weights are starting values that have not been validated against history yet. This is research, not investment advice.
+aTrader turns official NSE data into a research report for one company at a time. Python computes the indicators, scores, price levels, and scenarios; a team of agents explains the evidence, debates the outlook, and makes bounded, verified adjustments. The result is a **0–100 score and signal for 1 month, 6 months, and 2 years**, with the reasoning available beside the numbers.
+
+Use the web workspace to follow companies, read reports, inspect citations, and manage research runs—or run the same engine from the command line.
+
+> **Working first version · Experimental scoring.** The rules and weights have not yet been validated against historical outcomes. This is personal research, not investment advice. aTrader places no orders.
+
+![aTrader overview with company search and the research workspace](docs/screenshots/overview.jpg)
+
+*Captured from the running frontend using saved research and NSE prices through 5 October 2026. Screenshots show archived results, not live quotes; dry runs retain their labels.*
+
+## What you can do
+
+| Capability | What it gives you |
+| --- | --- |
+| **Follow your companies** | Search NSE listings by name, symbol, or ISIN; keep a watchlist with last closes and the latest horizon signals. |
+| **Read the whole outlook** | A research takeaway, three horizon scores, confidence, pros and cons, and the full analyst and debate output. |
+| **Trace a claim** | Open a citation to inspect its value, date, formula, inputs, or original filing link. Unsupported claims are marked and excluded from later agent reasoning. |
+| **Understand price context** | Daily candlesticks, moving averages, volume, support and resistance, anchored VWAPs, and the heaviest-traded band. |
+| **See what changes the signal** | Code-computed hypothetical closing prices that would move a horizon into another signal band. |
+| **Control the research** | Choose the depth and request budget, follow live stage progress, cancel work, or resume from a checkpoint. |
+| **Keep the result** | Export a compact signal card, full Markdown analysis, or structured JSON. |
+
+## Workspace
+
+The charcoal-and-orange interface keeps the report, price context, and supporting evidence close together. Every signal carries both a number and a label; report dates and missing sources stay visible.
+
+### Research report
+
+Read the takeaway and compare the short-, medium-, and long-term signals. Continue into the area scores, chart, outlook, risks, source coverage, and full analysis.
+
+![Shriram Finance research report with a cited takeaway and three horizon scores](docs/screenshots/research-report.jpg)
+
+<details>
+<summary><strong>Price context — stored NSE sessions and quick company selection</strong></summary>
+
+Switch between followed companies and chart ranges. The overview shows the latest stored close and its session date; company and report charts also offer indicators and report levels.
+
+![Shriram Finance daily candlestick chart with a dated close and followed-company selectors](docs/screenshots/price-chart.jpg)
+
+</details>
+
+<details>
+<summary><strong>Evidence drawer — follow the reasoning back to its inputs</strong></summary>
+
+A statement's sources open together. Calculated metrics show the formula, source date, and underlying evidence IDs; reported facts link back to their source documents when available.
+
+![Evidence drawer showing revenue growth, its formula, source date, and input facts](docs/screenshots/evidence-drawer.jpg)
+
+</details>
+
+<details>
+<summary><strong>Research history — find and revisit previous runs</strong></summary>
+
+Filter runs by company, status, and research depth, then open a saved report or inspect a run. Active runs provide stage updates over server-sent events; historical runs do not invent missing progress logs.
+
+![Research history with company and status filters and archived runs](docs/screenshots/research-history.jpg)
+
+*This archive preview uses report generation times for its history-row timestamps.*
+
+</details>
 
 ## Quick start
 
-```bash
+You need **Python 3.12+**, **uv**, and **Node.js 20.9+ with npm** for the web app. An OpenRouter key is optional for data-only research and dry runs.
+
+### 1. Install and configure
+
+Run these commands from the repository root:
+
+```powershell
 uv sync
+Copy-Item .env.example .env
+npm --prefix apps/web ci
 ```
 
-```bash
-copy .env.example .env
-```
+For AI-assisted research, add `OPENROUTER_API_KEY` to `.env`. Leave it unset if you want to start with data-only research. Keep `.env` private; it is ignored by Git.
 
-Put your `OPENROUTER_API_KEY` in `.env`. Then:
+On macOS or Linux, use `cp .env.example .env` for the copy step.
 
-```bash
+### 2. Download the price history
+
+```powershell
 uv run atrader ingest
 ```
 
-```bash
-uv run atrader research LT --dry-run
-```
+The initial download can take **30–40 minutes** at the project's conservative request rate. It collects roughly 300 price/index sessions and about 100 delivery-position sessions; later runs fetch missing days. NSE access and connection speed affect the duration.
 
-```bash
-uv run atrader research LT --mode compact
-```
+### 3. Open the workspace
 
-- `ingest` downloads about 300 sessions of NSE bhavcopy and index files once, plus about 100 sessions of delivery-position files. That takes 30–40 minutes at a polite pace (about 7 s per trading day); later runs fetch only new days.
-- `--dry-run` runs the whole graph on real data with placeholder model output, so it costs no requests.
-- Each run prints the signal card and writes three files to `reports/`: the card (`<SYMBOL>-<date>-<mode>-<run>.md`), the full analysis (`…-details.md`) and everything as `.json`.
-- `--mode data_only` makes no model calls and still gives a code-only scorecard (news is not scored).
+Start the API in one terminal:
 
-| Command | What it does |
-|---|---|
-| `atrader research SYMBOL --mode data_only\|compact\|full` | Research one company (0 / 6 / 11 model calls) |
-| `atrader resume RUN_ID` | Continue a run that paused when the daily quota ran out |
-| `atrader search "larsen"` | Find NSE symbols and ISINs |
-| `atrader models` | List free models the policy allows, and check the configured ones |
-| `atrader usage` / `atrader runs` | Today's request count / recent runs |
-| `atrader serve` | Start the local web API on `127.0.0.1:8000` (docs at `/v1/docs`) |
-
-## How it works
-
-```text
-data_steward          code: NSE data, metrics, base scores, vetoes
-   ├─ market_analyst        ┐
-   ├─ fundamentals_analyst  ├─ at the same time
-   └─ news_analyst          ┘
-   ├─ bull_researcher       ┐  at the same time, per round:
-   └─ bear_researcher       ┘  one round (compact) or two (full)
-   ├─ aggressive_debator    ┐
-   ├─ conservative_debator  ├─ at the same time, full mode only
-   └─ neutral_debator       ┘
-portfolio_manager     pros, cons, horizon notes, up to ±5 per horizon
-finalize              code: the scorecard, signals, price ranges, vetoes
-```
-
-- **Data steward (code):** pulls official NSE data: the equity master (ISIN), daily bhavcopy prices, delivery positions, Nifty 50 and the stock's sector index (from NSE's industry classification), XBRL quarterly results, corporate announcements (including order wins) and shareholding. It also pulls GDELT headlines. It computes indicators, volume and delivery flows, price levels, chart signals, growth, margins and P/E in Python, and freezes everything into an **evidence pack** where every item has an ID (`F3`, `M12`, `A2`, …).
-- **Agents (LLM):** every claim must cite pack IDs. Code checks each claim. A claim citing an ID that doesn't exist, or a number with no backing fact or metric, is marked unsupported and never reaches later agents.
-- **Scorecard (code, `analytics/scoring.py`):** each area (technical, growth & quality, valuation, news) starts at 50, and rules add or subtract points from the metrics, each citing its evidence. Technical rules come in five groups (trend ±10, momentum ±6, performance ±8, breakout ±6, flows ±10), and each group's total is capped, so one price move is not counted once per indicator. Valuation compares the P/E with the stock's NSE sector index first and the Nifty 50 second. An analyst may move its own area by up to ±15 with cited evidence; the news area comes from the news analyst's rated events. Each horizon weights the areas differently:
-
-  | Area | 1 month | 6 months | 2 years |
-  |---|---|---|---|
-  | Technical | 45% | 20% | 5% |
-  | Growth & quality | 15% | 35% | 45% |
-  | Valuation | 10% | 25% | 35% |
-  | News & catalysts | 30% | 20% | 15% |
-
-  The portfolio manager may move a horizon by up to ±5. A missing area is left out and its weight shared among the rest (never counted as 50); below 60% coverage there is no signal. Signals: Strong Bearish 0–29, Bearish 30–44, Neutral 45–55, Bullish 56–70, Strong Bullish 71–100. Price ranges are code-computed: ±1 standard deviation of past volatility for 1 and 6 months, bear/base/bull EPS × P/E scenarios for 2 years. They are not forecasts. Price levels come from confirmed swing points, moving averages, anchored VWAPs and the heaviest-traded price band. Signal flips are found by re-scoring a hypothetical next close until a signal changes. Levels describe the past; they are not entries, stops or targets.
-- **Vetoes (code):** stale prices, short price history, old results and low liquidity hold every horizon at Neutral or below. Missing core data withholds the signal.
-- **Gateway:** only zero-priced `:free` routes are used. Up to 4 calls run at once. Each run has a hard call cap (8 compact, 14 full), and a daily allowance is enforced locally. Each invalid answer gets one repair attempt. When the quota runs out, the run is checkpointed so it can be resumed.
-
-## Web API
-
-`atrader serve` starts a FastAPI server for the web app. It listens on loopback only, answers only to `localhost` / `127.0.0.1`, and refuses state-changing requests from other origins. Interactive docs are at `http://127.0.0.1:8000/v1/docs`.
-
-| Endpoint | What it does |
-|---|---|
-| `GET /v1/status`, `/v1/usage` | Data freshness, model configuration, today's request allowance |
-| `GET /v1/instruments?query=` | Search NSE companies |
-| `GET /v1/instruments/{symbol}/bars` | Split-adjusted daily bars with 20/50/200 averages, for charts |
-| `POST /v1/runs` | Queue a run (one at a time). Refused with 409 when the key or allowance is missing |
-| `GET /v1/runs`, `/v1/runs/{id}` | Run state and stage progress |
-| `GET /v1/runs/{id}/events` | Live progress as server-sent events; reconnect with `Last-Event-ID` |
-| `POST /v1/runs/{id}/cancel`, `/resume` | Stop scheduling new work; continue from the checkpoint |
-| `GET /v1/reports`, `/v1/reports/{id}` | The archive, and one report (without the price series) |
-| `GET /v1/reports/{id}/evidence/{eid}` | The filing, metric or headline behind a cited ID |
-| `GET /v1/reports/{id}/export?format=card\|details\|json` | Download a report |
-| `GET`, `PUT`, `DELETE /v1/watchlist` | Followed companies with their last close and latest signals |
-
-## Web app
-
-`apps/web` is a Next.js app (TypeScript, Tailwind, TradingView Lightweight Charts) that reads the API above: a watchlist, a company page with the price chart and its levels, the signal card with an evidence drawer, run history, and a live run page. It can start runs, always as an explicit choice that shows its cost, and never on page load. Design context is in [PRODUCT.md](PRODUCT.md) and [DESIGN.md](DESIGN.md).
-
-```bash
+```powershell
 uv run atrader serve
 ```
 
-```bash
-npm --prefix apps/web install
-```
+Start the frontend in a second terminal:
 
-```bash
+```powershell
 npm --prefix apps/web run dev
 ```
 
-Then open <http://localhost:3000>. Notes:
+Open **[localhost:3000](http://localhost:3000)**. Search for a company, add it to your watchlist, and choose **New research**. Data-only is the web form's default; AI modes show their request usage before you start.
 
-- The API types come from the API itself: after changing an endpoint, run `uv run atrader openapi apps/web/openapi.json`, then `npm --prefix apps/web run types`.
-- The dev and build scripts use webpack (`--webpack`), because Turbopack refuses a `node_modules` junction.
-- This repository sits in OneDrive, which struggles with thousands of package files. `npm run relink` (in `apps/web`) moves `node_modules` and `.next` to `%LOCALAPPDATA%\atrader\web` and leaves a junction; run it after every `npm install`, which replaces the junction with a real folder.
+The API's interactive documentation is at **[127.0.0.1:8000/v1/docs](http://127.0.0.1:8000/v1/docs)**.
 
-## Code layout
+### Prefer the command line?
 
-The agents follow TradingAgents' layout: one file per agent, each with a `create_<agent>(llm)` factory that returns a graph node.
+```powershell
+# Research without model requests or an API key
+uv run atrader research LT --mode data_only
 
-```text
-src/atrader/
-  agents/
-    analysts/      market_analyst.py  fundamentals_analyst.py  news_analyst.py
-    researchers/   bull_researcher.py  bear_researcher.py
-    managers/      portfolio_manager.py
-    risk_mgmt/     aggressive_debator.py  conservative_debator.py  neutral_debator.py
-    state.py       AgentState
-    context.py     evidence pack -> prompt text
-    utils.py       shared rules, one structured call, claim verification glue
-  graph/
-    setup.py       GraphSetup.setup_graph(mode)   -- wires the agents together
-    conditional_logic.py
-    research_graph.py   ResearchGraph(...).run("LT")  -- the entry point
-  data/            NSE + GDELT adapters, XBRL parser, SQLite store, evidence builder
-  analytics/       indicators, chart signals, fundamentals, vetoes, scoring, price ranges
-  llm/             free-only OpenRouter gateway, policy, usage ledger, fake gateway
-  verification/    claim, citation, score-adjustment and event checks
-  report/          signal card, full-analysis Markdown and JSON
-  api/             FastAPI app: search, bars, runs (queue, events, cancel), reports, watchlist
-apps/web/          Next.js web app (watchlist, company, report, runs)
+# Exercise the agent graph with real data and placeholder model output
+uv run atrader research LT --dry-run
+
+# Generate an AI-assisted report after configuring your key
+uv run atrader research LT --mode compact
 ```
 
-Run the tests with `uv run pytest` and lint with `uv run ruff check src tests`. Tests are offline and use synthetic data.
+A dry run avoids model requests; it still collects real market data and may need network access. The CLI defaults to compact mode when `--mode` is omitted.
 
-## Plan documents
+Every completed report writes three files to `reports/`:
 
-**[ROADMAP.md](ROADMAP.md)** tracks what is done, what is partial, and the next milestones.
+```text
+<SYMBOL>-<date>-<mode>-<run>.md           Signal card
+<SYMBOL>-<date>-<mode>-<run>-details.md   Full analysis
+<SYMBOL>-<date>-<mode>-<run>.json         Structured report and evidence
+```
 
-| Document | What it answers |
+## Research modes
+
+| Mode | Planned model calls | Hard call cap | Research path |
+| --- | ---: | ---: | --- |
+| `data_only` | **0** | **0** | Evidence collection and deterministic scoring; news is not scored. |
+| `compact` | **6** | **8** | Three analysts, one bull/bear debate round, and the portfolio manager. |
+| `full` | **11** | **14** | Three analysts, two debate rounds, three risk reviewers, and the portfolio manager. |
+
+The cap includes retries and repairs, so the actual request count can exceed the planned count. The gateway permits only zero-priced routes: explicit `:free` models, `openrouter/free`, or reviewed zero-priced models in the allowlist. It checks the catalog at runtime and enforces the configured daily allowance locally.
+
+When the allowance runs out, the run pauses with a checkpoint:
+
+```powershell
+uv run atrader resume RUN_ID
+```
+
+<details>
+<summary><strong>Useful commands</strong></summary>
+
+| Command | Purpose |
 | --- | --- |
-| [01 — Product definition](docs/01-product-definition.md) | What are we building, for whom, and what does the first release do? |
-| [02 — Research and reuse](docs/02-research-and-reuse.md) | How do TradingAgents and comparable projects work? What should we reuse? |
-| [03 — Feature map](docs/03-feature-map.md) | Which features ship first, later, or only if data access permits? |
-| [04 — Agent system](docs/04-agent-system.md) | Every analyst, debater, manager, graph stage, and stopping rule |
-| [05 — Indian data strategy](docs/05-indian-data-strategy.md) | Sources, access limits, freshness, provenance, and both kinds of order book |
-| [06 — Technical architecture](docs/06-technical-architecture.md) | Backend, frontend, storage, workers, reliability, and security |
-| [07 — Data and API contracts](docs/07-data-and-api-contracts.md) | Core entities, structured outputs, endpoints, and UI behavior |
-| [08 — Free operation and OpenRouter](docs/08-free-operation-and-openrouter.md) | What can be free, request budgets, model selection, and failure handling |
-| [09 — Validation and delivery roadmap](docs/09-validation-and-roadmap.md) | Build sequence, acceptance gates, evaluation, and unresolved decisions |
-| [10 — Research source register](docs/10-source-register.md) | Primary references and verification limits |
+| `uv run atrader search "larsen"` | Find NSE symbols and ISINs. |
+| `uv run atrader research SYMBOL --mode full` | Run the full research workflow. |
+| `uv run atrader research LT --cutoff YYYY-MM-DD --mode data_only` | Research with a specified knowledge cutoff. |
+| `uv run atrader models` | List eligible free models and check the configured choices. |
+| `uv run atrader usage` | Show today's request usage; accounting uses UTC days. |
+| `uv run atrader runs` | List recent runs and their status. |
+| `uv run atrader serve` | Start the local web API. |
 
-## Limits worth knowing
+</details>
 
-- This is research, not advice. It places no orders.
-- NSE filings, announcements and shareholding come from NSE website endpoints. They are used for personal research at a polite request rate; they are not a licensed feed and can change without notice.
-- Prices are end-of-day only. Order-backlog amounts sit inside announcement PDFs and are not extracted yet.
-- Macro (RBI, MoSPI) and Reddit sources are not built yet; reports list them as not requested.
-- A report on a past date is not a clean backtest: models may remember events after the cutoff.
+## How it works
+
+Inspired by [TradingAgents](https://github.com/TauricResearch/TradingAgents), the graph separates deterministic calculations from model reasoning. Each agent is a small graph node with a `create_<agent>(llm)` factory.
+
+```mermaid
+flowchart TD
+    NSE["NSE data + GDELT headlines"] --> Steward["Data steward · evidence + base scores"]
+    Steward --> Analysts["Market · fundamentals · news analysts"]
+    Analysts --> Debate["Bull / bear debate · 1 or 2 rounds"]
+    Debate --> Manager["Portfolio manager · bounded synthesis"]
+    Debate -. "Full mode" .-> Risk["Aggressive · conservative · neutral risk review"]
+    Risk --> Manager
+    Manager --> Final["Code vetoes · final scorecard"]
+    Steward -- "Data-only" --> Final
+    Final --> Report["Web workspace + Markdown + JSON"]
+```
+
+**Collect and freeze the evidence.** The data steward builds a dated evidence pack with IDs for reported facts, calculated metrics, announcements, shareholding, and headlines. Analysts run in parallel; bull and bear researchers work in parallel within each bounded debate round. Full mode adds parallel risk reviewers.
+
+**Verify the reasoning.** Claims must cite known evidence IDs, and numbers are checked against the pack. Unsupported claims do not reach later agents. Verification checks citations and numeric support; human semantic evaluation remains part of the roadmap.
+
+**Compute the final result.** Code owns the scorecard, price ranges, levels, signal-flip closes, and vetoes. Verified analyst adjustments are limited to ±15 within their own eligible area; portfolio-manager adjustments are limited to ±5 per horizon. A persuasive narrative cannot override missing-data or freshness constraints.
+
+### How to read a score
+
+The technical, growth and quality, and valuation areas start at 50 before evidence-linked rules move them. News is scored from the news analyst's rated events. Each horizon uses a different mix:
+
+| Area | 1 month | 6 months | 2 years |
+| --- | ---: | ---: | ---: |
+| Technical | 45% | 20% | 5% |
+| Growth & quality | 15% | 35% | 45% |
+| Valuation | 10% | 25% | 35% |
+| News & catalysts | 30% | 20% | 15% |
+
+| Score | Signal |
+| --- | --- |
+| 0–29 | Strong Bearish |
+| 30–44 | Bearish |
+| 45–55 | Neutral |
+| 56–70 | Bullish |
+| 71–100 | Strong Bullish |
+
+Missing areas are excluded and the remaining weights are redistributed. **Below 60% weighted coverage, no signal is issued.** Vetoes for stale prices, short histories, old results, or low liquidity can cap signals at Neutral or below; missing core data can withhold them altogether.
+
+Technical rule groups are capped to reduce repeated counting of the same price move. Valuation uses the stock's NSE sector index first and the Nifty 50 as fallback. See the [scoring implementation](src/atrader/analytics/scoring.py) for the exact rules.
+
+**Ranges describe uncertainty.** The 1- and 6-month ranges use historical volatility; 2-year ranges use bear/base/bull EPS × P/E scenarios. They are not forecasts. Price levels describe past trading, and signal-flip closes re-score a hypothetical next close with other inputs fixed. These are not entries, stops, or targets.
+
+### Data sources
+
+| Source | Current use |
+| --- | --- |
+| NSE equity master | Company names, symbols, series, and ISINs. |
+| NSE bhavcopy and delivery files | End-of-day prices, traded volume, delivery share, and flow metrics. |
+| NSE index files and industry classification | Nifty 50 and sector context, relative strength, and valuation comparisons. |
+| NSE quarterly XBRL results | Revenue, profit, margins, growth, and earnings inputs. |
+| NSE announcements and shareholding | Disclosures, order-win notices, and promoter/public ownership. |
+| GDELT | Company-filtered headline metadata; missing or rate-limited news stays visible as a coverage gap. |
+
+## Configuration
+
+Backend settings live in `.env`; [.env.example](.env.example) is the starting point.
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `OPENROUTER_API_KEY` | Unset | Required for real AI-assisted runs. |
+| `ATRADER_QUICK_MODEL` | `openrouter/free` | Model used for quick-tier calls. |
+| `ATRADER_DEEP_MODEL` | `openrouter/free` | Model used for deep-tier calls. |
+| `ATRADER_DAILY_REQUEST_LIMIT` | `50` | Set this to your account's actual allowance. |
+| `ATRADER_DAILY_REQUEST_RESERVE` | `10` | Requests held back from routine research; the default usable budget is 40. |
+| `ATRADER_MAX_CONCURRENT_REQUESTS` | `4` | Maximum simultaneous model requests. |
+| `ATRADER_PRICE_HISTORY_SESSIONS` | `300` | Price history retained per research run. |
+| `ATRADER_DATA_DIR` | Per-user application data | Location of SQLite state, caches, and checkpoints. |
+
+Runtime data defaults to the per-user application-data directory (`%LOCALAPPDATA%\atrader` on Windows); report exports default to the repository's `reports/` folder. Keep caches and databases outside OneDrive when possible.
+
+The frontend connects to port 8000 on its own hostname by default. `NEXT_PUBLIC_API_URL` can override that base URL when you configure a different local setup. The API listens on loopback by default, restricts accepted hosts, and checks origins for state-changing requests.
+
+## Development
+
+```powershell
+# Backend: offline tests and lint
+uv run pytest
+uv run ruff check src tests
+
+# Frontend: TypeScript and production build
+npm --prefix apps/web run typecheck
+npm --prefix apps/web run build
+```
+
+Tests use synthetic data and do not require model calls. After changing the API, regenerate the schema and frontend types:
+
+```powershell
+uv run atrader openapi apps/web/openapi.json
+npm --prefix apps/web run types
+```
+
+### Repository layout
+
+```text
+apps/web/                 Next.js workspace, charts, reports, evidence drawer
+src/atrader/
+  agents/                 Analysts, researchers, risk reviewers, manager
+  analytics/              Indicators, scoring, ranges, levels, flows, vetoes
+  api/                    FastAPI routes, reports, watchlist, run queue and events
+  contracts/              Typed evidence, agent, run, and scoring models
+  data/                   NSE/GDELT adapters, XBRL parsing, SQLite store
+  graph/                  LangGraph orchestration, checkpoints, run registry
+  llm/                    Free-only policy, gateway, request accounting
+  report/                 Signal-card, full-analysis, and JSON exports
+  verification/           Citation, numeric-support, and adjustment checks
+tests/                    Offline backend tests and fixtures
+docs/                     Product and technical documentation
+  screenshots/            Frontend captures used in this README
+reports/                  Generated research output (Git-ignored)
+```
+
+<details>
+<summary><strong>Local API reference</strong></summary>
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /v1/status`, `GET /v1/usage` | Data freshness, model setup, and request budget. |
+| `GET /v1/instruments?query=` | Search companies. |
+| `GET /v1/instruments/{symbol}/bars` | Split-adjusted daily bars and 20/50/200-session averages. |
+| `POST /v1/runs` | Queue a run; one worker executes research at a time. |
+| `GET /v1/runs`, `GET /v1/runs/{id}` | Run history, status, and stage progress. |
+| `GET /v1/runs/{id}/events` | Live server-sent events; reconnect with `Last-Event-ID`. |
+| `POST /v1/runs/{id}/cancel`, `POST /v1/runs/{id}/resume` | Stop new work or continue from a checkpoint. |
+| `GET /v1/reports`, `GET /v1/reports/{id}` | Browse the archive and read a report. |
+| `GET /v1/reports/{id}/evidence/{eid}` | Inspect a cited source or metric. |
+| `GET /v1/reports/{id}/export?format=card\|details\|json` | Export a report. |
+| `GET /v1/watchlist` | Read followed companies and their latest signals. |
+| `PUT /v1/watchlist/{symbol}`, `DELETE /v1/watchlist/{symbol}` | Follow or remove a company. |
+
+</details>
+
+<details>
+<summary><strong>Windows / OneDrive setup</strong></summary>
+
+The optional `npm --prefix apps/web run relink` helper moves `node_modules` and `.next` into `%LOCALAPPDATA%\atrader\web` and leaves directory junctions. Stop the frontend before using it; the helper replaces any existing destination folders. Run it again after an npm installation if you use this setup, because npm can replace the `node_modules` junction.
+
+Development and build scripts explicitly use webpack because Turbopack does not support the project's junction setup. Junctions point to machine-specific paths: after moving the checkout to another machine, reinstall dependencies and recreate the links if needed.
+
+</details>
+
+## Documentation
+
+Start with **[ROADMAP.md](ROADMAP.md)** for completed work, partial features, known issues, and the next milestones. [PRODUCT.md](PRODUCT.md) explains the user and purpose; [DESIGN.md](DESIGN.md) describes the frontend's visual system.
+
+| Guide | Covers |
+| --- | --- |
+| [01 · Product definition](docs/01-product-definition.md) | Audience, scope, and the first release. |
+| [02 · Research and reuse](docs/02-research-and-reuse.md) | TradingAgents and related approaches. |
+| [03 · Feature map](docs/03-feature-map.md) | What ships first and what remains conditional. |
+| [04 · Agent system](docs/04-agent-system.md) | Agent roles, graph stages, and stopping rules. |
+| [05 · Indian data strategy](docs/05-indian-data-strategy.md) | Sources, access, freshness, and provenance. |
+| [06 · Technical architecture](docs/06-technical-architecture.md) | Storage, workers, frontend, reliability, and security. |
+| [07 · Data and API contracts](docs/07-data-and-api-contracts.md) | Typed entities, endpoints, and UI behavior. |
+| [08 · Free operation and OpenRouter](docs/08-free-operation-and-openrouter.md) | Model selection, budgets, and failure handling. |
+| [09 · Validation and roadmap](docs/09-validation-and-roadmap.md) | Acceptance gates and evaluation plans. |
+| [10 · Source register](docs/10-source-register.md) | Primary references and verification limits. |
+
+## Current limits
+
+- **End-of-day data:** prices are stored NSE sessions, not real-time quotes or market depth.
+- **Experimental signals:** scoring has not been validated against historical outcomes. A past-date report is not a clean backtest because models can know later events.
+- **Incomplete fundamentals:** balance-sheet/cash-flow depth, bank-specific metrics, detailed holdings, and promoter pledges remain on the roadmap.
+- **Source access:** NSE website endpoints are not a licensed feed and can change or refuse requests; GDELT can rate-limit. Coverage records gaps instead of filling them with guesses.
+- **Order backlog:** order-related announcements are collected, but amounts inside PDFs and reported backlog totals are not yet extracted.
+- **Pending extensions:** RBI/MoSPI macro inputs, Reddit research, screening, alerts, and forward paper evaluation are not implemented.
+- **Cancellation:** cancelling stops new work; a model request already in flight can finish.
+
+The project is intended for local personal research. License metadata is currently **Proprietary** in [pyproject.toml](pyproject.toml).
