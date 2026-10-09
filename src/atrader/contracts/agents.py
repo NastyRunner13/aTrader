@@ -75,6 +75,48 @@ class EventRating(BaseModel):
     evidence_ids: list[str] = Field(default_factory=list, description="A or N IDs.")
 
 
+ResearchTopic = Literal["business_model", "competitive_advantage", "reinvestment",
+                        "cash_conversion", "financial_resilience", "governance",
+                        "growth_runway", "earnings_normality", "valuation", "thesis_failure"]
+
+
+class EvidenceQuote(BaseModel):
+    evidence_id: str
+    quote: str = Field(min_length=15, max_length=600,
+                       description="Exact supporting text from a D passage; never paraphrase.")
+
+
+class Investigation(BaseModel):
+    topic: ResearchTopic
+    finding: str = Field(max_length=1200)
+    evidence_ids: list[str] = Field(default_factory=list)
+    quotes: list[EvidenceQuote] = Field(default_factory=list, max_length=3)
+    mechanism: str | None = Field(default=None, max_length=600)
+    threats: list[str] = Field(default_factory=list, max_length=4)
+    direction: Literal["improving", "stable", "deteriorating", "unknown"] = "unknown"
+    missing: list[str] = Field(default_factory=list)
+    status: Literal["cited", "partial", "unknown"] = "unknown"
+
+
+class DisclosureTerm(BaseModel):
+    name: Literal["order_amount", "order_status", "customer", "execution_period", "margin",
+                  "cancellation",
+                  "funding", "working_capital", "backlog", "capacity", "debt_maturity",
+                  "floating_rate", "restricted_cash", "guarantee", "commitment",
+                  "customer_concentration", "revenue_driver", "maintenance_capex",
+                  "credit_quality", "capital_adequacy", "liquidity", "capitalised_expenses",
+                  "exceptional_items", "related_party", "remuneration", "operating_indicator"]
+    value: str = Field(max_length=600)
+    support: EvidenceQuote
+
+
+class ManagementDelivery(BaseModel):
+    decision: str = Field(max_length=600)
+    promise: EvidenceQuote
+    outcome: EvidenceQuote | None = None
+    assessment: Literal["delivered", "missed", "mixed", "unverified"] = "unverified"
+
+
 class _AnalystFields(BaseModel):
     stance: Assessment = Field(
         description="What the evidence in your area suggests overall. Use "
@@ -85,6 +127,9 @@ class _AnalystFields(BaseModel):
     gaps: list[str] = Field(
         default_factory=list, description="Data you needed but the pack does not contain."
     )
+    investigations: list[Investigation] = Field(default_factory=list, max_length=10)
+    disclosure_terms: list[DisclosureTerm] = Field(default_factory=list, max_length=20)
+    management_delivery: list[ManagementDelivery] = Field(default_factory=list, max_length=6)
 
 
 class AnalystOutput(_AnalystFields):
@@ -114,6 +159,9 @@ class AgentReport(BaseModel):
     model_call_ids: list[str] = Field(default_factory=list)
     prompt_version: str = ""
     error: str | None = None
+    investigations: list[Investigation] = Field(default_factory=list)
+    disclosure_terms: list[DisclosureTerm] = Field(default_factory=list)
+    management_delivery: list[ManagementDelivery] = Field(default_factory=list)
 
     @property
     def supported_claims(self) -> list[Claim]:

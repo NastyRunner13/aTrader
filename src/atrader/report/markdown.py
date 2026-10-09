@@ -19,7 +19,7 @@ def render_details(report: ResearchReport, card_name: str | None = None) -> str:
     parts = [_header(report, card_name), _score_breakdown(report)]
     if pack is not None:
         parts += [_coverage(report), _financials(pack), _metrics(pack), _catalysts(pack),
-                  _institutional(pack)]
+                  _institutional(pack), _research_depth(report)]
     if report.request.mode != Mode.DATA_ONLY:
         parts += [_analysts(report), _debate(report), _risk_team(report), _synthesis(report)]
     parts += [_appendix(report)]
@@ -155,18 +155,77 @@ def _institutional(pack: EvidencePack) -> str:
         return ""
     lines = ["## Institutional cash activity", "",
              "Market-wide activity, not company buying/selling. NSE-only and combined scopes "
-             "overlap; do not add them. Provisional figures are not custodian-confirmed. "
+             "overlap; do not add them. Provisional and confirmed series remain separate. "
              "Observation times, rather than session dates, bound availability.", "",
-             "| ID | Session | Participant | Scope / basis | Purchases | Sales | Net | Observed |",
+             "| ID | Date | Participant | Scope, basis, route | Buys | Sales | Net | Observed |",
              "|---|---|---|---|---|---|---|---|"]
     for row in reversed(pack.institutional_activity):
         lines.append(f"| {row.evidence_id} | {row.session} | {row.participant} | "
-                     f"{row.scope} / {row.basis} | {format_value(row.purchases_inr, 'INR')} | "
+                     f"{row.scope} / {row.basis} / {row.route} ({row.date_basis} date) | "
+                     f"{format_value(row.purchases_inr, 'INR')} | "
                      f"{format_value(row.sales_inr, 'INR')} | {format_value(row.net_inr, 'INR')} "
                      f"| {row.available_at.isoformat()} |")
     sources = sorted({r.source.url for r in pack.institutional_activity if r.source.url})
     lines += ["", *[f"- [Source]({url})" for url in sources]]
     return "\n".join(lines)
+
+
+def _research_depth(report: ResearchReport) -> str:  # noqa: PLR0912
+    pack = report.pack
+    if pack is None:
+        return ""
+    lines = ["## Business and financial investigations"]
+    for analyst in report.analyst_reports:
+        for item in analyst.investigations:
+            lines += [f"### {item.topic.replace('_', ' ').title()} ({item.status})",
+                      f"{item.finding} {_cite(item.evidence_ids)}"]
+            if item.mechanism:
+                lines.append(f"Mechanism: {item.mechanism}")
+            if item.threats:
+                lines.append("Threats: " + "; ".join(item.threats))
+            if item.missing:
+                lines.append("Missing: " + "; ".join(item.missing))
+            lines += [f"> {q.quote} [{q.evidence_id}]" for q in item.quotes]
+        if analyst.disclosure_terms:
+            lines += ["### Disclosed commercial and funding terms",
+                      "Missing terms are unknown; new awards are not added to reported backlog."]
+        for term in analyst.disclosure_terms:
+            lines += [f"- {term.name}: {term.value} [{term.support.evidence_id}]",
+                      f"  > {term.support.quote}"]
+        if analyst.management_delivery:
+            lines += ["### Management promises and outcomes",
+                      "Chronology and quotes are checked; assessments remain model judgements."]
+        for record in analyst.management_delivery:
+            lines += [f"- {record.decision}: {record.assessment}",
+                      f"  - Promise: {record.promise.quote} [{record.promise.evidence_id}]",
+                      f"  - Outcome: {record.outcome.quote if record.outcome else 'unverified'}"
+                      + (f" [{record.outcome.evidence_id}]" if record.outcome else "")]
+    if pack.ownership:
+        lines += ["## Detailed ownership",
+                  "Category totals overlap named holders; do not add them."]
+        for row in pack.ownership:
+            lines.append(f"- [{row.evidence_id}] {row.period_end}: {row.holder} ({row.level}); "
+                         f"shares {row.shares}; ownership {row.ownership_pct}%; "
+                         f"pledged {row.pledged_shares}; encumbered {row.encumbered_shares}; "
+                         f"source {row.source.url}")
+    if pack.corporate_actions:
+        lines += ["## Corporate actions used for comparability"]
+        for action in pack.corporate_actions:
+            lines.append(f"- [{action.evidence_id}] {action.ex_date}: {action.description}; "
+                         f"share factor {action.share_factor}; source {action.source.url}")
+    if pack.sector_flows:
+        lines += ["## Sector FPI investment", "Assets under custody are not net investment."]
+        for flow in pack.sector_flows:
+            lines.append(f"- [{flow.evidence_id}] {flow.sector}, "
+                         f"{flow.period_start}–{flow.period_end}: "
+                         f"net equity {format_value(flow.net_equity_inr, 'INR')}; "
+                         f"equity AUC {format_value(flow.equity_auc_inr, 'INR')}")
+    if pack.documents:
+        lines += ["## Document passages"]
+        for doc in pack.documents:
+            lines += [f"### [{doc.evidence_id}] {doc.title}, page {doc.page}",
+                      f"Source: {doc.source.url} (published {doc.source.published_at})", doc.text]
+    return "\n\n".join(lines)
 
 
 def _analysts(report: ResearchReport) -> str:

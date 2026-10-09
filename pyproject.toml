@@ -18,6 +18,10 @@ dependencies = [
     "defusedxml>=0.7,<1",
     "fastapi>=0.142.2",
     "uvicorn>=0.54.0",
+    "pypdf>=6,<7",
+    "beautifulsoup4>=4.14,<5",
+    "openpyxl>=3.1,<4",
+    "fonttools>=4.60,<5",
 ]
 
 [project.scripts]
@@ -31,6 +35,8 @@ dev = [
     "mypy>=2.4",
     "pandas-stubs",
     "types-defusedxml",
+    "types-beautifulsoup4>=4.12.0.20250516",
+    "types-openpyxl>=3.1.5.20260827",
 ]
 
 [build-system]

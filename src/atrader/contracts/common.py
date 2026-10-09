@@ -75,6 +75,7 @@ class Confidence(StrEnum):
 
 class Mode(StrEnum):
     DATA_ONLY = "data_only"  # no model calls; a code-only scorecard
+    BASELINE = "baseline"  # one synthesis call, for evaluation against debate workflows
     COMPACT = "compact"  # 6 planned calls
     FULL = "full"  # 11 planned calls
 

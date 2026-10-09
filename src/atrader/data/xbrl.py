@@ -4,8 +4,7 @@ Values in these filings are already in base units (rupees); `decimals` only reco
 the precision the filer rounded to (e.g. -7 for crores). Period identity comes from
 each fact's context dates, never from context names like `OneD`.
 
-P0 keeps entity-level (non-dimensional) facts. Segment facts carry an explicit XBRL
-dimension and are left for the segment-exposure work (F07).
+Entity and curated segment facts keep their distinct dimensional identities.
 """
 
 from __future__ import annotations
@@ -20,6 +19,7 @@ from xml.etree.ElementTree import Element  # typing only; parsing uses defusedxm
 from defusedxml import ElementTree
 
 from atrader.contracts import StatementBasis
+from atrader.data.statement_tags import SEGMENT_TAGS, STATEMENT_LABELS
 
 _XBRLI = "{http://www.xbrl.org/2003/instance}"
 
@@ -77,6 +77,7 @@ class XbrlFact:
     period_start: date | None
     period_end: date
     duration: Duration
+    dimensions: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass
@@ -97,6 +98,7 @@ class _Context:
     end: date
     instant: bool
     dimensional: bool
+    dimensions: tuple[tuple[str, str], ...] = ()
 
 
 def parse_results_xbrl(content: bytes) -> ParsedResults:
@@ -122,20 +124,23 @@ def parse_results_xbrl(content: bytes) -> ParsedResults:
             if name in _META and not context.dimensional:
                 meta.setdefault(name, text)
             continue
-        if context.dimensional:
+        if context.dimensional and name not in SEGMENT_TAGS:
             continue
         try:
             value = Decimal(text)
         except InvalidOperation:
             continue
+        if not value.is_finite():
+            continue
         facts.append(XbrlFact(
             metric=name,
-            label=KEY_LABELS.get(name, _words(name)),
+            label=KEY_LABELS.get(name, STATEMENT_LABELS.get(name, _words(name))),
             value=value,
             unit=_UNIT_NAMES.get(unit_ref, unit_ref),
             period_start=None if context.instant else context.start,
             period_end=context.end,
             duration="instant" if context.instant else _duration(context.start, context.end),
+            dimensions=context.dimensions,
         ))
 
     return ParsedResults(
@@ -161,14 +166,22 @@ def _contexts(root: Element) -> dict[str, _Context]:
         end = period.findtext(f"{_XBRLI}endDate")
         dimensional = (ctx.find(f"{_XBRLI}scenario") is not None
                        or ctx.find(f".//{_XBRLI}segment") is not None)
+        dimensions = tuple(sorted(
+            (e.get("dimension", "").split(":")[-1], " ".join(e.itertext()).strip())
+            for e in ctx.iter() if e.tag.endswith(("}explicitMember", "}typedMember"))))
+        # Segment member names are ordinal codes; include the filer's human-readable label.
+        label = next((e.text for e in root if e.get("contextRef") == ctx.get("id")
+                      and e.tag.endswith("}DescriptionOfReportableSegment")), None)
+        if label:
+            dimensions += (("ReportedSegment", label.strip()),)
         try:
             if instant:
                 contexts[ctx.get("id", "")] = _Context(None, date.fromisoformat(instant.strip()),
-                                                       True, dimensional)
+                                                       True, dimensional, dimensions)
             elif start and end:
                 contexts[ctx.get("id", "")] = _Context(date.fromisoformat(start.strip()),
                                                        date.fromisoformat(end.strip()),
-                                                       False, dimensional)
+                                                       False, dimensional, dimensions)
         except ValueError:
             continue
     return contexts
@@ -190,9 +203,10 @@ def _duration(start: date | None, end: date) -> Duration:
 
 
 def _deduplicate(facts: list[XbrlFact]) -> list[XbrlFact]:
-    seen: dict[tuple[str, date | None, date, str], XbrlFact] = {}
+    seen: dict[tuple[object, ...], XbrlFact] = {}
     for fact in facts:
-        seen.setdefault((fact.metric, fact.period_start, fact.period_end, fact.unit), fact)
+        seen.setdefault((fact.metric, fact.period_start, fact.period_end, fact.unit,
+                         fact.dimensions), fact)
     return list(seen.values())
 
 

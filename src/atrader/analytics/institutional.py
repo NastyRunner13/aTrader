@@ -14,6 +14,8 @@ def institutional_metrics(rows: Sequence[InstitutionalActivity], sessions: Seque
         return []
     groups: dict[tuple[str, str, str, str], dict[date, InstitutionalActivity]] = defaultdict(dict)
     for row in rows:
+        if row.date_basis != "trading" or row.route != "stock_exchange":
+            continue  # reporting-day custodian observations are not trading-session flows
         group = (row.participant, row.scope, row.basis, row.source.provider)
         if row.session in groups[group]:
             raise ValueError("flow metrics need one observation per session and series")

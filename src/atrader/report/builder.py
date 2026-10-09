@@ -44,6 +44,9 @@ def build_report(run_id: str, request: ResearchRequest, state: dict[str, Any],
     status = RunStatus.PARTIAL if AgentStatus.FAILED in statuses else RunStatus.COMPLETED
 
     notes: list[str] = []
+    if request.mode == Mode.BASELINE:
+        notes.append("Single-model baseline: one synthesis over the frozen evidence; "
+                     "specialist analysts and debate did not run.")
     if request.mode == Mode.COMPACT:
         notes.append("Compact mode: one debate round; the risk team did not run.")
     if request.mode == Mode.DATA_ONLY:

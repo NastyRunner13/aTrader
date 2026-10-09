@@ -36,9 +36,12 @@ Use the web workspace to follow companies, read reports, inspect citations, and 
 | **Understand price context** | Daily candlesticks, moving averages, volume, support and resistance, anchored VWAPs, and the heaviest-traded band. |
 | **See what changes the signal** | Code-computed hypothetical closing prices that would move a horizon into another signal band. |
 | **Test the thesis** | Cited assumptions, observable failure conditions and upcoming disclosed events; missing evidence stays visible. |
-| **Inspect institutional context** | Separate NSE-only and combined-exchange FPI/DII cash activity, with complete-history 5/20/60-session trends. |
+| **Investigate the business** | Ten structured investigations, page-linked filing quotes, cash conversion, capital returns, resilience stress and conditional valuation scenarios. |
+| **Inspect institutional context** | Separate provisional/confirmed cash series, sector flows, detailed ownership and split/bonus-aware quantity changes, with explicit coverage gaps. |
 | **Control the research** | Choose the depth and request budget, follow live stage progress, cancel work, or resume from a checkpoint. |
 | **Keep the result** | Export a compact signal card, full Markdown analysis, or structured JSON. |
+
+See [the investor-research guide](docs/11-investor-research.md) for data boundaries, archive imports, reverse valuation, supplied-portfolio analysis and frozen-pack evaluation. Production NSDL access and human research-quality validation remain outstanding.
 
 ## Workspace
 
@@ -156,6 +159,7 @@ Every completed report writes three files to `reports/`:
 | Mode | Planned model calls | Hard call cap | Research path |
 | --- | ---: | ---: | --- |
 | `data_only` | **0** | **0** | Evidence collection and deterministic scoring; news is not scored. |
+| `baseline` | **1** | **2** | Single-model synthesis for CLI/API benchmark comparisons. |
 | `compact` | **6** | **8** | Three analysts, one bull/bear debate round, and the portfolio manager. |
 | `full` | **11** | **14** | Three analysts, two debate rounds, three risk reviewers, and the portfolio manager. |
 

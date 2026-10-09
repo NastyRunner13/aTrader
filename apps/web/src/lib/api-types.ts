@@ -310,6 +310,12 @@ export interface components {
             prompt_version: string;
             /** Error */
             error: string | null;
+            /** Investigations */
+            investigations: components["schemas"]["Investigation"][];
+            /** Disclosure Terms */
+            disclosure_terms: components["schemas"]["DisclosureTerm"][];
+            /** Management Delivery */
+            management_delivery: components["schemas"]["ManagementDelivery"][];
         };
         /**
          * AgentStatus
@@ -446,6 +452,31 @@ export interface components {
          * @enum {string}
          */
         Confidence: "high" | "medium" | "low";
+        /** CorporateAction */
+        CorporateAction: {
+            /**
+             * Evidence Id
+             * @default
+             */
+            evidence_id: string;
+            /** Symbol */
+            symbol: string;
+            /**
+             * Ex Date
+             * Format: date
+             */
+            ex_date: string;
+            /** Description */
+            description: string;
+            /** Share Factor */
+            share_factor: number | null;
+            /**
+             * Available At
+             * Format: date-time
+             */
+            available_at: string;
+            source: components["schemas"]["SourceRef"];
+        };
         /**
          * Coverage
          * @description Availability of one source category for a run (docs/05, "Freshness and coverage").
@@ -550,7 +581,41 @@ export interface components {
              * @default fundamental
              * @enum {string}
              */
-            category: "fundamental" | "valuation" | "technical" | "liquidity" | "pattern" | "market" | "flow" | "level" | "institutional";
+            category: "fundamental" | "valuation" | "technical" | "liquidity" | "pattern" | "market" | "flow" | "level" | "institutional" | "resilience" | "capital" | "segment";
+        };
+        /** DisclosureTerm */
+        DisclosureTerm: {
+            /**
+             * Name
+             * @enum {string}
+             */
+            name: "order_amount" | "order_status" | "customer" | "execution_period" | "margin" | "cancellation" | "funding" | "working_capital" | "backlog" | "capacity" | "debt_maturity" | "floating_rate" | "restricted_cash" | "guarantee" | "commitment" | "customer_concentration" | "revenue_driver" | "maintenance_capex" | "credit_quality" | "capital_adequacy" | "liquidity" | "capitalised_expenses" | "exceptional_items" | "related_party" | "remuneration" | "operating_indicator";
+            /** Value */
+            value: string;
+            support: components["schemas"]["EvidenceQuote"];
+        };
+        /**
+         * DocumentPassage
+         * @description Verbatim text from a numbered filing page, never an instruction to the agent.
+         */
+        DocumentPassage: {
+            /**
+             * Evidence Id
+             * @default
+             */
+            evidence_id: string;
+            /** Title */
+            title: string;
+            /** Page */
+            page: number;
+            /** Text */
+            text: string;
+            /**
+             * Topics
+             * @default []
+             */
+            topics: string[];
+            source: components["schemas"]["SourceRef"];
         };
         /** EventRating */
         EventRating: {
@@ -582,7 +647,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "facts" | "metrics" | "announcements" | "shareholding" | "news" | "institutional_activity";
+            kind: "facts" | "metrics" | "announcements" | "shareholding" | "news" | "institutional_activity" | "documents" | "ownership" | "sector_flows" | "corporate_actions";
             /** Item */
             item: {
                 [key: string]: unknown;
@@ -635,6 +700,26 @@ export interface components {
              */
             institutional_activity: components["schemas"]["InstitutionalActivity"][];
             /**
+             * Documents
+             * @default []
+             */
+            documents: components["schemas"]["DocumentPassage"][];
+            /**
+             * Ownership
+             * @default []
+             */
+            ownership: components["schemas"]["OwnershipPosition"][];
+            /**
+             * Sector Flows
+             * @default []
+             */
+            sector_flows: components["schemas"]["SectorFlow"][];
+            /**
+             * Corporate Actions
+             * @default []
+             */
+            corporate_actions: components["schemas"]["CorporateAction"][];
+            /**
              * Indices
              * @default []
              */
@@ -646,6 +731,16 @@ export interface components {
              * @default []
              */
             coverage: components["schemas"]["CoverageEntry"][];
+        };
+        /** EvidenceQuote */
+        EvidenceQuote: {
+            /** Evidence Id */
+            evidence_id: string;
+            /**
+             * Quote
+             * @description Exact supporting text from a D passage; never paraphrase.
+             */
+            quote: string;
         };
         /**
          * Factor
@@ -718,6 +813,14 @@ export interface components {
             missing_reason: string | null;
             /** Revision Note */
             revision_note: string | null;
+            /**
+             * Dimensions
+             * @default []
+             */
+            dimensions: [
+                string,
+                string
+            ][];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -848,6 +951,18 @@ export interface components {
              * @enum {string}
              */
             basis: "provisional" | "confirmed";
+            /**
+             * Date Basis
+             * @default trading
+             * @enum {string}
+             */
+            date_basis: "trading" | "reporting";
+            /**
+             * Route
+             * @default stock_exchange
+             * @enum {string}
+             */
+            route: "stock_exchange" | "primary_other";
             /** Purchases Inr */
             purchases_inr: number;
             /** Sales Inr */
@@ -869,6 +984,38 @@ export interface components {
             name: string;
             /** Isin */
             isin: string;
+        };
+        /** Investigation */
+        Investigation: {
+            /**
+             * Topic
+             * @enum {string}
+             */
+            topic: "business_model" | "competitive_advantage" | "reinvestment" | "cash_conversion" | "financial_resilience" | "governance" | "growth_runway" | "earnings_normality" | "valuation" | "thesis_failure";
+            /** Finding */
+            finding: string;
+            /** Evidence Ids */
+            evidence_ids: string[];
+            /** Quotes */
+            quotes: components["schemas"]["EvidenceQuote"][];
+            /** Mechanism */
+            mechanism: string | null;
+            /** Threats */
+            threats: string[];
+            /**
+             * Direction
+             * @default unknown
+             * @enum {string}
+             */
+            direction: "improving" | "stable" | "deteriorating" | "unknown";
+            /** Missing */
+            missing: string[];
+            /**
+             * Status
+             * @default unknown
+             * @enum {string}
+             */
+            status: "cited" | "partial" | "unknown";
         };
         /**
          * Level
@@ -921,11 +1068,24 @@ export interface components {
              */
             source: string;
         };
+        /** ManagementDelivery */
+        ManagementDelivery: {
+            /** Decision */
+            decision: string;
+            promise: components["schemas"]["EvidenceQuote"];
+            outcome: components["schemas"]["EvidenceQuote"] | null;
+            /**
+             * Assessment
+             * @default unverified
+             * @enum {string}
+             */
+            assessment: "delivered" | "missed" | "mixed" | "unverified";
+        };
         /**
          * Mode
          * @enum {string}
          */
-        Mode: "data_only" | "compact" | "full";
+        Mode: "data_only" | "baseline" | "compact" | "full";
         /** ModelCall */
         ModelCall: {
             /** Call Id */
@@ -992,6 +1152,46 @@ export interface components {
             published_at: string;
             /** Language */
             language: string | null;
+            source: components["schemas"]["SourceRef"];
+        };
+        /** OwnershipPosition */
+        OwnershipPosition: {
+            /**
+             * Evidence Id
+             * @default
+             */
+            evidence_id: string;
+            /** Isin */
+            isin: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /** Holder */
+            holder: string;
+            /** Category */
+            category: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "category" | "holder" | "fund";
+            /** Shares */
+            shares: number | null;
+            /** Ownership Pct */
+            ownership_pct: number | null;
+            /** Pledged Shares */
+            pledged_shares: number | null;
+            /** Encumbered Shares */
+            encumbered_shares: number | null;
+            /** Total Company Shares */
+            total_company_shares: number | null;
+            /**
+             * Available At
+             * Format: date-time
+             */
+            available_at: string;
             source: components["schemas"]["SourceRef"];
         };
         /**
@@ -1339,6 +1539,41 @@ export interface components {
             /** Model Adjusted */
             model_adjusted: boolean;
             levels: components["schemas"]["PriceLevels"] | null;
+        };
+        /** SectorFlow */
+        SectorFlow: {
+            /**
+             * Evidence Id
+             * @default
+             */
+            evidence_id: string;
+            /** Sector */
+            sector: string;
+            /**
+             * Taxonomy
+             * @default BSE industry classification
+             */
+            taxonomy: string;
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /** Net Equity Inr */
+            net_equity_inr: number;
+            /** Equity Auc Inr */
+            equity_auc_inr: number | null;
+            /**
+             * Available At
+             * Format: date-time
+             */
+            available_at: string;
+            source: components["schemas"]["SourceRef"];
         };
         /** ShareholdingSnapshot */
         ShareholdingSnapshot: {

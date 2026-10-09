@@ -24,6 +24,12 @@ logger = logging.getLogger(__name__)
 ALLOWED_HOSTS = frozenset({
     "www.nseindia.com",
     "nsearchives.nseindia.com",
+    "archives.nseindia.com",
+    "www.fpi.nsdl.co.in",
+    "fpi.nsdl.co.in",
+    "www.amfiindia.com",
+    "portal.amfiindia.com",
+    "api.amfiindia.com",
     "api.gdeltproject.org",
 })
 
@@ -34,7 +40,7 @@ _USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/128.0 Safari/537.36 aTrader-personal-research"
 )
-_MAX_BYTES = 25 * 1024 * 1024
+_MAX_BYTES = 50 * 1024 * 1024  # large exchange annual reports; still bounded before parsing
 
 
 class FetchError(RuntimeError):

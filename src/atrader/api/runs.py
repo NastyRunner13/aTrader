@@ -44,8 +44,9 @@ class CannotStart(Exception):
 def plan(mode: Mode) -> list[dict[str, Any]]:
     stages = [("evidence", "Collect NSE evidence", ["data_steward"])]
     if mode != Mode.DATA_ONLY:
-        stages += [("analysts", "Analyst reports", _ANALYSTS),
-                   ("debate", "Bull and bear debate", _DEBATE)]
+        if mode != Mode.BASELINE:
+            stages += [("analysts", "Analyst reports", _ANALYSTS),
+                       ("debate", "Bull and bear debate", _DEBATE)]
         if mode == Mode.FULL:
             stages.append(("risk", "Risk review", _RISK))
         stages.append(("manager", "Portfolio manager", ["portfolio_manager"]))

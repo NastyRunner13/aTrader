@@ -45,6 +45,7 @@ explain them.
             context.metrics(pack, "pattern", title="Rule-based chart signals"),
             context.metrics(pack, "flow", title="Volume and delivery"),
             context.institutional(pack),
+            context.research_sources(pack),
             context.metrics(pack, "level", title="Price levels (past turning points and volume)"),
             context.metrics(pack, "liquidity", "market", title="Liquidity and market context"),
             context.base_scores(state, Pillar.TECHNICAL),

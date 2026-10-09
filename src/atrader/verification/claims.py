@@ -19,7 +19,9 @@ from atrader.contracts import (
     EvidencePack,
     FinancialFact,
     InstitutionalActivity,
+    OwnershipPosition,
     Reason,
+    SectorFlow,
     ShareholdingSnapshot,
 )
 
@@ -31,7 +33,8 @@ _NUMERIC = re.compile(
 
 
 # Evidence that carries reported or computed numbers and can back a numeric statement.
-NUMERIC_EVIDENCE = (FinancialFact, DerivedMetric, ShareholdingSnapshot, InstitutionalActivity)
+NUMERIC_EVIDENCE = (FinancialFact, DerivedMetric, ShareholdingSnapshot, InstitutionalActivity,
+                    OwnershipPosition, SectorFlow)
 
 
 def normalise_ids(ids: list[str]) -> list[str]:

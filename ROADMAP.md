@@ -67,12 +67,12 @@ sector FPI and detailed ownership collectors remain pending; see
 | F01 | Company and listing search | P0 | 🟡 | NSE symbol/ISIN resolution and `atrader search`. Missing: BSE codes, symbol-change history |
 | F02 | Watchlists and saved reports | P0 | ✅ | Reports saved with pack, cutoff and sources; run registry; a watchlist in the web app with each company's last close and latest signals |
 | F03 | Daily price/volume history | P0 | ✅ | NSE bhavcopy, adjustment basis, holidays, last complete bar. Missing: user CSV import path |
-| F04 | Financial statements and key ratios | P0 | 🟡 | Quarterly P&L from XBRL, growth, margins. Missing: balance sheet, cash flow, bank/NBFC/insurer line items |
-| F05 | Annual reports and presentations | P0 | ⬜ | No PDF extraction yet |
+| F04 | Financial statements and key ratios | P0 | 🟡 | Quarterly/annual P&L, balance sheet/cash flow, capital returns and bank/NBFC fields. Missing: comprehensive insurer taxonomy and broader live validation |
+| F05 | Annual reports and presentations | P0 | ✅ | Bounded annual/presentation PDF extraction, archived page passages and exact-quote checks; scanned pages remain gaps |
 | F06 | Announcements and catalysts | P0 | ✅ | NSE disclosures with timestamps, dedup, routine filings filtered. BSE cross-posts not merged |
-| F07 | Business segments and exposures | P0 basic | ⬜ | Segment facts exist in XBRL but are skipped for now |
-| F08 | Company order backlog | P0 basic | 🟡 | Order-win intimations flagged; prompts forbid treating them as secured revenue. Missing: amounts and status from PDFs, reported backlog totals |
-| F09 | Ownership and governance | P0 basic | 🟡 | Promoter/public % by quarter; governance disclosures reach the news analyst. Missing: pledges, auditor/director change parsing |
+| F07 | Business segments and exposures | P0 basic | ✅ | Curated XBRL segment dimensions, revenue/results/margins and cited business investigations |
+| F08 | Company order backlog | P0 basic | 🟡 | Page-cited extraction of amounts, status, execution and backlog/contract terms. Missing: broader live EPC quality validation |
+| F09 | Ownership and governance | P0 basic | 🟡 | Detailed categories/holders, pledges/encumbrances, split/bonus comparisons, fund workbook imports and quoted management outcomes. Missing: comprehensive AMC layouts and dedicated auditor/director event parsing |
 | F10 | Sector-aware valuation | P0 simple | 🟡 | Trailing P/E scored against the NSE sector index P/E, then the Nifty 50; approximate market cap. Missing: peer sets, own-history P/E, bank metrics (P/B, ROA) |
 | F11 | Company and sector news | P0 | 🟡 | GDELT company headlines with a relevance filter. Missing: sector news, publisher RSS, a reliable fallback when GDELT rate-limits |
 | F12 | Macro and geopolitics | P0 basic | ⬜ | No RBI/MoSPI adapters, so no macro analyst yet |
@@ -100,21 +100,21 @@ sector FPI and detailed ownership collectors remain pending; see
 | F29 | Deterministic stock screener | P1 | ⬜ | Groundwork done: bhavcopy already stores every NSE equity |
 | F30 | Local watchlist event alerts | P1 | ⬜ | |
 | F31 | Prospective paper journal | P1 | ⬜ | |
-| F32 | Historical evaluation and ablations | P0 harness | ⬜ | Groundwork done: `--cutoff` and point-in-time filtering |
-| F33 | Hypothetical portfolio risk | P1 | ⬜ | |
+| F32 | Historical evaluation and ablations | P0 harness | 🟡 | Frozen-pack four-mode benchmark, evidence ablations, human-audit export and forward outcomes. Missing: blinded audit and held-out score validation |
+| F33 | Hypothetical portfolio risk | P1 | ✅ | Supplied-position concentration, sector and shared exposures in one valuation currency; no inferred correlations |
 | F34 | Market depth / order flow | P2 cond. | ⏸ | Needs an entitled broker feed |
 | F35 | F&O, option chains, OI, IV | P2 cond. | ⏸ | The F&O bhavcopy (open interest) and participant-wise OI files were reachable on 5 Oct; not built |
 | F36 | Public / multi-user deployment | P2 cond. | ⏸ | Needs data rights and a SEBI review |
 | F37 | Broker execution | Out of scope | ⏸ | Not planned |
 
-**Tally (37 features):** 13 done, 8 partial, 11 not started, 5 deferred. Of the 25 first-release (P0) features, 13 are done, 8 partial and 4 not started (F05, F07, F12, F32).
+**Tally (37 features):** 16 done, 9 partial, 7 not started, 5 deferred. Of the 25 first-release (P0) features, 15 are done, 9 partial and 1 not started (F12).
 
 ### Delivery stages (docs/09)
 
 | Stage | Status | Remaining to exit |
 |---|---|---|
 | 0 — Prove data access | 🟡 nearly done | Zero-cost inference ✅ (4 Oct). Remaining: pull data for all ten pilot companies, not just L&T |
-| 1 — Data foundation | 🟡 mostly done | Balance sheet/cash flow; CSV import. The web company page is deferred |
+| 1 — Data foundation | 🟡 mostly done | Broader filing coverage and CSV import. Balance sheet/cash flow and document extraction implemented. The web company page is deferred |
 | 2 — Compact vertical slice | 🟡 first company passed | L&T passed end to end with a real model (6/8 calls). Remaining: the other nine pilot companies |
 | 3 — Full research | 🟡 graph built | Evidence that full mode beats compact on a blinded evaluation set |
 | 4 — Screening, monitoring, paper evaluation | ⬜ | |
@@ -136,21 +136,21 @@ Ordered by dependency. Each milestone ends with something you can run.
 ### M2 — Evaluation harness (F32)
 - [ ] Build a 30-case research-quality set (unit traps, restatements, missing data, injection text in documents).
 - [ ] Human-audit sampled claims for support; report the denominator.
-- [ ] Baselines: single-model synthesis vs compact vs full.
+- [x] Baselines: data-only, single-model synthesis, compact and full; frozen-pack replay and evidence ablations. Real-model quality comparison remains pending.
 - [ ] Validate the scorecard: run code-only scorecards at monthly `--cutoff` dates across the pilot set (no model calls), check whether higher scores preceded better 1M/6M returns, then tune the rule points, group caps and horizon weights. Test in particular whether 1-month weakness predicts further weakness or a rebound: published research generally finds short-term reversal.
 - **Exit:** a measured answer to "is full mode worth 2× the calls?"
 
 ### M3 — Indian data depth (F04, F05, F07, F08, F09, F17)
 - [x] Investor-research foundation: eight-quarter comparisons, reverse EPS sensitivity, removal of quarterly PEG/promoter-percentage scoring, Updates retained, and explicit missing institutional coverage (8 Oct). Remaining ten-question research and institutional requirements are tracked in [docs/11](docs/11-investor-research.md).
-- [ ] Balance sheet and cash flow from half-yearly XBRL; bank/NBFC line items.
-- [ ] Order-award extraction from announcement PDFs: amount or range, status, customer, execution period, with page citations.
-- [ ] Reported backlog totals from results presentations.
-- [ ] Promoter pledges from shareholding filings.
-- [ ] Segment revenue and results from XBRL dimensions.
+- [x] Balance sheet and cash flow from annual/half-yearly XBRL; bank/NBFC line items.
+- [x] Structured order-award extraction from PDF passages: amount or range, status, customer, execution period, with exact quotes and page citations.
+- [x] Structured reported-backlog extraction from presentation passages, distinct from awards; live quality review remains pending.
+- [x] Promoter pledges and other encumbrances from shareholding filings.
+- [x] Segment revenue and results from XBRL dimensions.
 - [x] Sector index relative strength and sector P/E (5 Oct).
-- [ ] FII and mutual-fund holdings per stock, and pledges, from the quarterly shareholding XBRL (the `xbrl` link is already in the shareholding API).
-- [ ] Daily market-wide FPI/DII gross purchases, sales and net activity with 5/20/60-session trends; distinguish NSE-only/combined exchanges and provisional/custodian-confirmed series.
-- [ ] Fortnightly sector FPI net investment separate from assets under custody; detailed company ownership from exchange XBRL and mutual-fund disclosures, adjusted for corporate actions. Evaluate new weights before using them.
+- [x] Institutional categories, named holders and pledges from quarterly shareholding XBRL.
+- [x] Separate NSE provisional and NSDL confirmed adapters, archived captures and complete-window 5/20/60 trading-session trends. Production NSDL access is currently blocked.
+- [x] Fortnightly sector net investment versus AUC; detailed exchange ownership and fund .xlsx imports with known corporate-action adjustments. Missing histories remain unknown; no new weights enabled.
 - [ ] Participant-wise futures OI as market context, preserving its separation from cash activity.
 - [ ] F&O open-interest build-up for F&O stocks; bulk and block deals collected daily.
 - **Exit:** the order-backlog section works for at least one EPC company.
@@ -169,6 +169,7 @@ Ordered by dependency. Each milestone ends with something you can run.
 - [ ] Deterministic screener over the stored bhavcopy universe.
 - [ ] Local alerts on new material disclosures.
 - [ ] Prospective paper journal: freeze each assessment before its outcome; review after 60+ sessions.
+- [x] Supplied-portfolio concentration, sector and shared-exposure analysis (`portfolio-risk`).
 
 ### Later / conditional
 F13 Reddit, F14 Hindi sources, F34–F35 depth and derivatives, and F36 public deployment, each once its access or legal gate is cleared. F37 broker execution is not planned.

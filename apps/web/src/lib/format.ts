@@ -88,7 +88,7 @@ export function factValue(value: string | null, unit: string): string {
   return `${plain.format(n)}${unit && unit !== "pure" ? ` ${unit}` : ""}`;
 }
 
-export const MODE_LABEL = { data_only: "Data only", compact: "Compact", full: "Full" } as const;
+export const MODE_LABEL = { data_only: "Data only", baseline: "Single model", compact: "Compact", full: "Full" } as const;
 
 export const safeUrl = (url: string | null | undefined): string | null => {
   if (!url) return null;

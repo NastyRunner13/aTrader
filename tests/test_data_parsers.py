@@ -48,10 +48,11 @@ def test_xbrl_reads_metadata_and_entity_level_facts():
                    "quarter")].unit == "INR/share"
 
 
-def test_xbrl_skips_segment_dimensions_and_text_facts():
+def test_xbrl_retains_segment_dimensions_and_skips_text_facts():
     parsed = parse_results_xbrl((FIXTURES / "results_sample.xml").read_bytes())
     metrics = {f.metric for f in parsed.facts}
-    assert "SegmentRevenue" not in metrics  # dimensional context
+    assert "SegmentRevenue" in metrics
+    assert all(f.dimensions for f in parsed.facts if f.metric == "SegmentRevenue")
     assert "CommentOnResults" not in metrics  # text, and never a prompt instruction
     assert "SegmentAssets" in metrics  # non-dimensional instant fact is kept
     assert next(f for f in parsed.facts if f.metric == "SegmentAssets").duration == "instant"

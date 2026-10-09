@@ -6,7 +6,7 @@ from atrader.contracts import NewsAnalystOutput
 def create_news_analyst(llm):
     def news_analyst_node(state):
         pack = state["pack"]
-        if not pack.announcements and not pack.news:
+        if not pack.announcements and not pack.news and not pack.documents:
             return skipped_report("news_analyst", "no disclosures or news headlines")
 
         role = """\
@@ -18,7 +18,12 @@ timeline of material events from its exchange disclosures and news headlines.
   secured revenue. Never add a new award to a reported backlog total.
 - When disclosed, identify order amount/currency, customer, funding, execution period,
   margins, cancellation terms and working-capital needs; mark absent terms unknown.
-  Attachment links are not attachment contents. Do not claim to have read a PDF.
+  Only D passages establish attachment contents; links alone do not.
+- Extract disclosure_terms for order amount, order status, customer, execution period, margin,
+  cancellation, funding, working capital, reported backlog and capacity. Each term
+  must include an exact quote from a D passage. An omitted term means unknown, not benign.
+- Return management_delivery records with exact promise and outcome quotes from dated
+  D passages. A later outcome must postdate the promise; absent outcomes stay unverified.
 - Governance: credit ratings, auditor or director changes, litigation and regulatory
   actions. Label allegations as allegations.
 - Management delivery: pair dated promises with subsequent disclosed outcomes and cite
@@ -38,6 +43,7 @@ timeline of material events from its exchange disclosures and news headlines.
             context.company(pack),
             context.announcements(pack),
             context.news(pack),
+            context.research_sources(pack),
             context.coverage(pack),
             "Write your analysis.",
         )

@@ -116,17 +116,24 @@ def test_missing_institutional_datasets_are_separate_coverage_gaps(settings, mon
     store = Mock()
     store.institutional_activity.return_value = []
     store.known_sessions.return_value = {}
+    store.research_evidence.return_value = []
+    monkeypatch.setattr("atrader.data.evidence_builder.collect_annual_reports",
+                        lambda *args: ([], []))
     builder = NseEvidenceBuilder(Mock(), store, settings)
     monkeypatch.setattr(builder, "resolve", lambda symbol: LISTING)
     monkeypatch.setattr(builder, "_prices", lambda *args: ([], []))
     monkeypatch.setattr(builder, "_index_series", lambda *args: None)
     entry = CoverageEntry(category="sector", status=Coverage.MISSING)
     monkeypatch.setattr(builder, "_sector", lambda *args: (None, None, entry))
+    monkeypatch.setattr("atrader.data.evidence_builder.ownership.collect_ownership",
+                        lambda *args: ([], []))
     for method in ("_financials", "_announcements", "_shareholding", "_news"):
         monkeypatch.setattr(builder, method, lambda *args: ([], entry))
+    monkeypatch.setattr("atrader.data.evidence_builder.corporate_actions.collect_actions",
+                        lambda *args: ([], [], None))
     pack = builder.build(ResearchRequest(symbol=LISTING.symbol, cutoff=CUTOFF))
     for category in ("institutional_sector_activity",
                      "institutional_ownership", "business_economics", "financial_resilience"):
         coverage = pack.coverage_for(category)
-        assert coverage is not None and coverage.status == Coverage.NOT_REQUESTED
+        assert coverage is not None and coverage.status == Coverage.MISSING
     assert not pack.metrics  # missing data never becomes synthetic zero flows

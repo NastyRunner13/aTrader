@@ -43,6 +43,14 @@ def _run(mode: Mode, pack=None, responder=None):
     return graph.invoke({"run_id": "run-test", "request": request}), gateway
 
 
+def test_single_model_baseline_uses_same_evidence_without_specialists_or_debate():
+    state, gateway = _run(Mode.BASELINE)
+    assert [c.node for c in gateway.calls()] == ["portfolio_manager"]
+    assert not state.get("analyst_reports") and not state.get("debate")
+    assert state["final_synthesis"].summary
+    assert state["scorecard"] is not None
+
+
 @pytest.mark.parametrize("mode", [Mode.COMPACT, Mode.FULL])
 def test_each_mode_makes_exactly_its_planned_calls(mode):
     state, gateway = _run(mode)

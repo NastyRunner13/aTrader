@@ -51,6 +51,15 @@ class GraphSetup:
             workflow.add_edge("data_steward", "finalize")
             return workflow
 
+        if mode == Mode.BASELINE:
+            workflow.add_node("portfolio_manager", create_portfolio_manager(self.deep_llm))
+            workflow.add_conditional_edges(
+                "data_steward",
+                lambda state: self.conditional_logic.should_run_analysts(
+                    state, ["portfolio_manager"]), ["portfolio_manager", "finalize"])
+            workflow.add_edge("portfolio_manager", "finalize")
+            return workflow
+
         # Analyst team: runs in parallel once the evidence pack is frozen.
         analyst_nodes = []
         for key in selected_analysts:

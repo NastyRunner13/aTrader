@@ -28,6 +28,10 @@ class EvidenceKind(StrEnum):
     SHAREHOLDING = "S"
     NEWS = "N"
     INSTITUTIONAL_ACTIVITY = "I"
+    DOCUMENT_PASSAGE = "D"
+    OWNERSHIP_POSITION = "H"
+    SECTOR_FLOW = "T"
+    CORPORATE_ACTION = "C"
 
 
 class SourceRef(BaseModel):
@@ -92,6 +96,7 @@ class FinancialFact(BaseModel):
     source: SourceRef
     missing_reason: str | None = None
     revision_note: str | None = None  # set when a later filing restated this figure
+    dimensions: tuple[tuple[str, str], ...] = ()
 
 
 class DerivedMetric(BaseModel):
@@ -111,7 +116,8 @@ class DerivedMetric(BaseModel):
     detail: str | None = None
     quality_flags: tuple[str, ...] = ()
     category: Literal["fundamental", "valuation", "technical", "liquidity", "pattern",
-                      "market", "flow", "level", "institutional"] = "fundamental"
+                      "market", "flow", "level", "institutional", "resilience",
+                      "capital", "segment"] = "fundamental"
 
 
 class Announcement(BaseModel):
@@ -162,6 +168,8 @@ class InstitutionalActivity(BaseModel):
     participant: Literal["FPI", "DII"]
     scope: Literal["nse", "combined"]
     basis: Literal["provisional", "confirmed"] = "provisional"
+    date_basis: Literal["trading", "reporting"] = "trading"
+    route: Literal["stock_exchange", "primary_other"] = "stock_exchange"
     purchases_inr: float = Field(ge=0)
     sales_inr: float = Field(ge=0)
     net_inr: float
@@ -174,6 +182,59 @@ class InstitutionalActivity(BaseModel):
         if abs(self.purchases_inr - self.sales_inr - self.net_inr) > 200_000:
             raise ValueError("institutional purchases minus sales does not reconcile with net")
         return self
+
+
+class DocumentPassage(BaseModel):
+    """Verbatim text from a numbered filing page, never an instruction to the agent."""
+
+    model_config = ConfigDict(frozen=True)
+    evidence_id: str = ""
+    title: str
+    page: int = Field(ge=1)
+    text: str = Field(min_length=1, max_length=6000)
+    topics: tuple[str, ...] = ()
+    source: SourceRef
+
+
+class OwnershipPosition(BaseModel):
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    evidence_id: str = ""
+    isin: str
+    period_end: date
+    holder: str
+    category: str
+    level: Literal["category", "holder", "fund"]
+    shares: float | None = Field(default=None, ge=0)
+    ownership_pct: float | None = Field(default=None, ge=0, le=100)
+    pledged_shares: float | None = Field(default=None, ge=0)
+    encumbered_shares: float | None = Field(default=None, ge=0)
+    total_company_shares: float | None = Field(default=None, gt=0)
+    available_at: AwareDatetime
+    source: SourceRef
+
+
+class SectorFlow(BaseModel):
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    evidence_id: str = ""
+    sector: str
+    taxonomy: str = "BSE industry classification"
+    period_start: date
+    period_end: date
+    net_equity_inr: float
+    equity_auc_inr: float | None = Field(default=None, ge=0)
+    available_at: AwareDatetime
+    source: SourceRef
+
+
+class CorporateAction(BaseModel):
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    evidence_id: str = ""
+    symbol: str
+    ex_date: date
+    description: str
+    share_factor: float | None = Field(default=None, gt=0)
+    available_at: AwareDatetime
+    source: SourceRef
 
 
 class IndexSeries(BaseModel):
@@ -211,6 +272,10 @@ class EvidencePack(BaseModel):
     shareholding: tuple[ShareholdingSnapshot, ...] = ()
     news: tuple[NewsItem, ...] = ()
     institutional_activity: tuple[InstitutionalActivity, ...] = ()
+    documents: tuple[DocumentPassage, ...] = ()
+    ownership: tuple[OwnershipPosition, ...] = ()
+    sector_flows: tuple[SectorFlow, ...] = ()
+    corporate_actions: tuple[CorporateAction, ...] = ()
     bars: tuple[PriceBar, ...] = ()
     indices: tuple[IndexSeries, ...] = ()
     industry: str | None = None  # NSE industry, today's classification (not point-in-time)
@@ -224,7 +289,8 @@ class EvidencePack(BaseModel):
     def items_by_id(self) -> dict[str, EvidenceItem]:
         items: dict[str, EvidenceItem] = {}
         for group in (self.facts, self.metrics, self.announcements, self.shareholding, self.news,
-                      self.institutional_activity):
+                      self.institutional_activity, self.documents, self.ownership,
+                      self.sector_flows, self.corporate_actions):
             for item in group:
                 items[item.evidence_id] = item
         return items
@@ -245,4 +311,5 @@ class EvidencePack(BaseModel):
 
 
 EvidenceItem = (FinancialFact | DerivedMetric | Announcement | ShareholdingSnapshot | NewsItem
-                | InstitutionalActivity)
+                | InstitutionalActivity | DocumentPassage | OwnershipPosition | SectorFlow
+                | CorporateAction)

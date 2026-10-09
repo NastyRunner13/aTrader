@@ -13,15 +13,22 @@ from atrader.analytics.flows import flow_metrics
 from atrader.analytics.fundamentals import fundamental_metrics
 from atrader.analytics.levels import level_metrics
 from atrader.analytics.patterns import detect_patterns
+from atrader.analytics.segments import per_share_history, segment_metrics
+from atrader.analytics.statements import statement_metrics
 from atrader.analytics.technicals import technical_metrics
+from atrader.analytics.valuation import valuation_metrics
 from atrader.contracts import (
     Announcement,
+    CorporateAction,
     DerivedMetric,
+    DocumentPassage,
     FinancialFact,
     IndexSeries,
     InstitutionalActivity,
     NewsItem,
+    OwnershipPosition,
     PriceBar,
+    SectorFlow,
     ShareholdingSnapshot,
 )
 
@@ -29,6 +36,8 @@ from atrader.contracts import (
 def pack_metrics(bars: Sequence[PriceBar], facts: Sequence[FinancialFact],
                  indices: Sequence[IndexSeries] = (), *,
                  levels: bool = True) -> list[DerivedMetric]:
+    segments = segment_metrics(facts)
+    facts = [f for f in facts if not f.dimensions]
     benchmark = next((i for i in indices if i.role == "benchmark"), None)
     sector = next((i for i in indices if i.role == "sector"), None)
     metrics = technical_metrics(bars, benchmark, sector) + detect_patterns(list(bars))
@@ -38,6 +47,11 @@ def pack_metrics(bars: Sequence[PriceBar], facts: Sequence[FinancialFact],
     last = bars[-1] if bars else None
     metrics += fundamental_metrics(list(facts), last.close if last else None,
                                    last.session if last else None)
+    metrics += statement_metrics(facts)
+    metrics += per_share_history(facts)
+    metrics += segments
+    if last and levels:
+        metrics += valuation_metrics(facts, metrics, last.close, last.session)
     for name, index in (("benchmark_pe", benchmark), ("sector_pe", sector)):
         if index is not None and index.pe is not None and index.pe_as_of is not None:
             metrics.append(DerivedMetric(
@@ -81,7 +95,8 @@ def resolve_metric_ids(metrics: list[DerivedMetric]) -> list[DerivedMetric]:
 
 
 def number[T: (FinancialFact, DerivedMetric, Announcement, ShareholdingSnapshot, NewsItem,
-                InstitutionalActivity)](
+                InstitutionalActivity, DocumentPassage, OwnershipPosition, SectorFlow,
+                CorporateAction)](
     items: list[T], prefix: str,
 ) -> list[T]:
     return [item.model_copy(update={"evidence_id": f"{prefix}{i}"})

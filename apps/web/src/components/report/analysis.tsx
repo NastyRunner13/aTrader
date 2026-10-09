@@ -5,6 +5,7 @@ import { BANDS, SIGNAL_LABEL } from "@/lib/signal";
 import type { AgentReport, Claim, CoverageEntry, DebateTurn, Report, RiskReview, Veto } from "@/lib/types";
 import { Cited } from "../evidence";
 import { Badge } from "../ui";
+import { ResearchDepth } from "./research-depth";
 
 function Fold({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
@@ -199,7 +200,7 @@ export function Analysis({ report }: { report: Report }) {
     const key = `${row.participant}/${row.scope}/${row.basis}/${row.source.provider}`;
     if (!latestActivity.has(key) || row.session > latestActivity.get(key)!.session) latestActivity.set(key, row);
   }
-  const flowMetrics = (report.pack?.metrics ?? []).filter((m) => m.category === "institutional");
+  const flowMetrics = (report.pack?.metrics ?? []).filter((m) => m.category === "institutional" && !m.name.startsWith("ownership_"));
 
   return (
     <section aria-labelledby="analysis-title">
@@ -207,6 +208,7 @@ export function Analysis({ report }: { report: Report }) {
         Full analysis
       </h2>
       <p className="meta mt-1 mb-3">Everything the agents wrote. Claims whose citations did not check out are marked and were kept out of the debate.</p>
+      <ResearchDepth report={report} />
 
       {synthesis?.status === "completed" && (synthesis.thesis_tests ?? []).length > 0 && (
         <Fold title="Thesis assumptions and failure conditions" hint={`${synthesis.thesis_tests.length} assumptions`}>
@@ -225,14 +227,14 @@ export function Analysis({ report }: { report: Report }) {
 
       {activity.length > 0 && (
         <Fold title="Institutional market context" hint="FPI / DII cash activity">
-          <p className="prose-body !text-sm">Market-wide activity does not identify purchases in this company. NSE-only and combined-exchange figures overlap; they must not be added together. Provisional figures can be revised.</p>
+          <p className="prose-body !text-sm">Market-wide activity does not identify purchases in this company. NSE-only and combined-exchange figures overlap; they must not be added together. Provisional figures can be revised. Confirmed FPI rows use reporting dates and separate investment routes; they are excluded from trading-session trends.</p>
           <div className="overflow-x-auto">
             <table className="tbl">
-              <thead><tr><th scope="col">Participant / scope</th><th scope="col">Session</th><th scope="col" className="r">Purchases</th><th scope="col" className="r">Sales</th><th scope="col" className="r">Net activity</th></tr></thead>
+              <thead><tr><th scope="col">Participant / scope</th><th scope="col">Date / basis</th><th scope="col" className="r">Purchases</th><th scope="col" className="r">Sales</th><th scope="col" className="r">Net activity</th></tr></thead>
               <tbody>{[...latestActivity.values()].map((row) => (
                 <tr key={row.evidence_id}>
-                  <td><Cited text={`${row.participant} · ${row.scope === "nse" ? "NSE only" : "NSE / BSE / MSEI"}`} ids={[row.evidence_id]} /><span className="meta block">{row.basis}</span></td>
-                  <td>{dateOnly(row.session)}</td><td className="num r">{metricValue(row.purchases_inr, "INR")}</td><td className="num r">{metricValue(row.sales_inr, "INR")}</td><td className="num r">{metricValue(row.net_inr, "INR")}</td>
+                  <td><Cited text={`${row.participant} · ${row.basis === "confirmed" ? "Custodian-confirmed" : row.scope === "nse" ? "NSE only" : "NSE / BSE / MSEI"}`} ids={[row.evidence_id]} /><span className="meta block">{row.basis} · {row.route === "primary_other" ? "Primary market / other" : "Stock exchange"}</span></td>
+                  <td>{dateOnly(row.session)}<span className="meta block">{row.date_basis ?? "trading"} date</span></td><td className="num r">{metricValue(row.purchases_inr, "INR")}</td><td className="num r">{metricValue(row.sales_inr, "INR")}</td><td className="num r">{metricValue(row.net_inr, "INR")}</td>
                 </tr>
               ))}</tbody>
             </table>

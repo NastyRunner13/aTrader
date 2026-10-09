@@ -35,6 +35,7 @@ from atrader.report.writer import write_report
 # full: 3 analysts + 2 debate rounds of 2 + 3 risk reviewers + portfolio manager.
 MODES = {
     Mode.DATA_ONLY: {"debate_rounds": 0, "planned_calls": 0, "max_calls": 0},
+    Mode.BASELINE: {"debate_rounds": 0, "planned_calls": 1, "max_calls": 2},
     Mode.COMPACT: {"debate_rounds": 1, "planned_calls": 6, "max_calls": 8},
     Mode.FULL: {"debate_rounds": 2, "planned_calls": 11, "max_calls": 14},
 }

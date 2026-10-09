@@ -820,6 +820,27 @@
               }
             ],
             "title": "Error"
+          },
+          "investigations": {
+            "items": {
+              "$ref": "#/components/schemas/Investigation"
+            },
+            "type": "array",
+            "title": "Investigations"
+          },
+          "disclosure_terms": {
+            "items": {
+              "$ref": "#/components/schemas/DisclosureTerm"
+            },
+            "type": "array",
+            "title": "Disclosure Terms"
+          },
+          "management_delivery": {
+            "items": {
+              "$ref": "#/components/schemas/ManagementDelivery"
+            },
+            "type": "array",
+            "title": "Management Delivery"
           }
         },
         "type": "object",
@@ -835,7 +856,10 @@
           "events",
           "model_call_ids",
           "prompt_version",
-          "error"
+          "error",
+          "investigations",
+          "disclosure_terms",
+          "management_delivery"
         ],
         "title": "AgentReport"
       },
@@ -1162,6 +1186,59 @@
         ],
         "title": "Confidence"
       },
+      "CorporateAction": {
+        "properties": {
+          "evidence_id": {
+            "type": "string",
+            "title": "Evidence Id",
+            "default": ""
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "ex_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Ex Date"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "share_factor": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share Factor"
+          },
+          "available_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Available At"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceRef"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evidence_id",
+          "symbol",
+          "ex_date",
+          "description",
+          "share_factor",
+          "available_at",
+          "source"
+        ],
+        "title": "CorporateAction"
+      },
       "Coverage": {
         "type": "string",
         "enum": [
@@ -1393,7 +1470,10 @@
               "market",
               "flow",
               "level",
-              "institutional"
+              "institutional",
+              "resilience",
+              "capital",
+              "segment"
             ],
             "title": "Category",
             "default": "fundamental"
@@ -1416,6 +1496,103 @@
         ],
         "title": "DerivedMetric",
         "description": "A value computed in Python from stored inputs. Reproducible from `inputs`."
+      },
+      "DisclosureTerm": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": [
+              "order_amount",
+              "order_status",
+              "customer",
+              "execution_period",
+              "margin",
+              "cancellation",
+              "funding",
+              "working_capital",
+              "backlog",
+              "capacity",
+              "debt_maturity",
+              "floating_rate",
+              "restricted_cash",
+              "guarantee",
+              "commitment",
+              "customer_concentration",
+              "revenue_driver",
+              "maintenance_capex",
+              "credit_quality",
+              "capital_adequacy",
+              "liquidity",
+              "capitalised_expenses",
+              "exceptional_items",
+              "related_party",
+              "remuneration",
+              "operating_indicator"
+            ],
+            "title": "Name"
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 600,
+            "title": "Value"
+          },
+          "support": {
+            "$ref": "#/components/schemas/EvidenceQuote"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "value",
+          "support"
+        ],
+        "title": "DisclosureTerm"
+      },
+      "DocumentPassage": {
+        "properties": {
+          "evidence_id": {
+            "type": "string",
+            "title": "Evidence Id",
+            "default": ""
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 6000,
+            "minLength": 1,
+            "title": "Text"
+          },
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Topics",
+            "default": []
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceRef"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evidence_id",
+          "title",
+          "page",
+          "text",
+          "topics",
+          "source"
+        ],
+        "title": "DocumentPassage",
+        "description": "Verbatim text from a numbered filing page, never an instruction to the agent."
       },
       "EventRating": {
         "properties": {
@@ -1467,7 +1644,11 @@
               "announcements",
               "shareholding",
               "news",
-              "institutional_activity"
+              "institutional_activity",
+              "documents",
+              "ownership",
+              "sector_flows",
+              "corporate_actions"
             ],
             "title": "Kind"
           },
@@ -1547,6 +1728,38 @@
             "title": "Institutional Activity",
             "default": []
           },
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentPassage"
+            },
+            "type": "array",
+            "title": "Documents",
+            "default": []
+          },
+          "ownership": {
+            "items": {
+              "$ref": "#/components/schemas/OwnershipPosition"
+            },
+            "type": "array",
+            "title": "Ownership",
+            "default": []
+          },
+          "sector_flows": {
+            "items": {
+              "$ref": "#/components/schemas/SectorFlow"
+            },
+            "type": "array",
+            "title": "Sector Flows",
+            "default": []
+          },
+          "corporate_actions": {
+            "items": {
+              "$ref": "#/components/schemas/CorporateAction"
+            },
+            "type": "array",
+            "title": "Corporate Actions",
+            "default": []
+          },
           "indices": {
             "items": {
               "$ref": "#/components/schemas/IndexSeries"
@@ -1586,12 +1799,37 @@
           "shareholding",
           "news",
           "institutional_activity",
+          "documents",
+          "ownership",
+          "sector_flows",
+          "corporate_actions",
           "indices",
           "industry",
           "coverage"
         ],
         "title": "EvidencePack",
         "description": "Everything a run may cite, frozen before interpretation starts."
+      },
+      "EvidenceQuote": {
+        "properties": {
+          "evidence_id": {
+            "type": "string",
+            "title": "Evidence Id"
+          },
+          "quote": {
+            "type": "string",
+            "maxLength": 600,
+            "minLength": 15,
+            "title": "Quote",
+            "description": "Exact supporting text from a D passage; never paraphrase."
+          }
+        },
+        "type": "object",
+        "required": [
+          "evidence_id",
+          "quote"
+        ],
+        "title": "EvidenceQuote"
       },
       "Factor": {
         "properties": {
@@ -1760,6 +1998,24 @@
               }
             ],
             "title": "Revision Note"
+          },
+          "dimensions": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "title": "Dimensions",
+            "default": []
           }
         },
         "type": "object",
@@ -1779,7 +2035,8 @@
           "filed_at",
           "source",
           "missing_reason",
-          "revision_note"
+          "revision_note",
+          "dimensions"
         ],
         "title": "FinancialFact",
         "description": "A reported figure, stored in base units (INR, not crore) with its reporting context."
@@ -2097,6 +2354,24 @@
             "title": "Basis",
             "default": "provisional"
           },
+          "date_basis": {
+            "type": "string",
+            "enum": [
+              "trading",
+              "reporting"
+            ],
+            "title": "Date Basis",
+            "default": "trading"
+          },
+          "route": {
+            "type": "string",
+            "enum": [
+              "stock_exchange",
+              "primary_other"
+            ],
+            "title": "Route",
+            "default": "stock_exchange"
+          },
           "purchases_inr": {
             "type": "number",
             "minimum": 0.0,
@@ -2127,6 +2402,8 @@
           "participant",
           "scope",
           "basis",
+          "date_basis",
+          "route",
           "purchases_inr",
           "sales_inr",
           "net_inr",
@@ -2158,6 +2435,107 @@
           "isin"
         ],
         "title": "InstrumentOut"
+      },
+      "Investigation": {
+        "properties": {
+          "topic": {
+            "type": "string",
+            "enum": [
+              "business_model",
+              "competitive_advantage",
+              "reinvestment",
+              "cash_conversion",
+              "financial_resilience",
+              "governance",
+              "growth_runway",
+              "earnings_normality",
+              "valuation",
+              "thesis_failure"
+            ],
+            "title": "Topic"
+          },
+          "finding": {
+            "type": "string",
+            "maxLength": 1200,
+            "title": "Finding"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Ids"
+          },
+          "quotes": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceQuote"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Quotes"
+          },
+          "mechanism": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 600
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mechanism"
+          },
+          "threats": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Threats"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "improving",
+              "stable",
+              "deteriorating",
+              "unknown"
+            ],
+            "title": "Direction",
+            "default": "unknown"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "cited",
+              "partial",
+              "unknown"
+            ],
+            "title": "Status",
+            "default": "unknown"
+          }
+        },
+        "type": "object",
+        "required": [
+          "topic",
+          "finding",
+          "evidence_ids",
+          "quotes",
+          "mechanism",
+          "threats",
+          "direction",
+          "missing",
+          "status"
+        ],
+        "title": "Investigation"
       },
       "Level": {
         "properties": {
@@ -2272,10 +2650,52 @@
         ],
         "title": "Listing"
       },
+      "ManagementDelivery": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "maxLength": 600,
+            "title": "Decision"
+          },
+          "promise": {
+            "$ref": "#/components/schemas/EvidenceQuote"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvidenceQuote"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "assessment": {
+            "type": "string",
+            "enum": [
+              "delivered",
+              "missed",
+              "mixed",
+              "unverified"
+            ],
+            "title": "Assessment",
+            "default": "unverified"
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision",
+          "promise",
+          "outcome",
+          "assessment"
+        ],
+        "title": "ManagementDelivery"
+      },
       "Mode": {
         "type": "string",
         "enum": [
           "data_only",
+          "baseline",
           "compact",
           "full"
         ],
@@ -2488,6 +2908,127 @@
           "source"
         ],
         "title": "NewsItem"
+      },
+      "OwnershipPosition": {
+        "properties": {
+          "evidence_id": {
+            "type": "string",
+            "title": "Evidence Id",
+            "default": ""
+          },
+          "isin": {
+            "type": "string",
+            "title": "Isin"
+          },
+          "period_end": {
+            "type": "string",
+            "format": "date",
+            "title": "Period End"
+          },
+          "holder": {
+            "type": "string",
+            "title": "Holder"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "category",
+              "holder",
+              "fund"
+            ],
+            "title": "Level"
+          },
+          "shares": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shares"
+          },
+          "ownership_pct": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ownership Pct"
+          },
+          "pledged_shares": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pledged Shares"
+          },
+          "encumbered_shares": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encumbered Shares"
+          },
+          "total_company_shares": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Company Shares"
+          },
+          "available_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Available At"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceRef"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evidence_id",
+          "isin",
+          "period_end",
+          "holder",
+          "category",
+          "level",
+          "shares",
+          "ownership_pct",
+          "pledged_shares",
+          "encumbered_shares",
+          "total_company_shares",
+          "available_at",
+          "source"
+        ],
+        "title": "OwnershipPosition"
       },
       "Pillar": {
         "type": "string",
@@ -3433,6 +3974,71 @@
           "levels"
         ],
         "title": "Scorecard"
+      },
+      "SectorFlow": {
+        "properties": {
+          "evidence_id": {
+            "type": "string",
+            "title": "Evidence Id",
+            "default": ""
+          },
+          "sector": {
+            "type": "string",
+            "title": "Sector"
+          },
+          "taxonomy": {
+            "type": "string",
+            "title": "Taxonomy",
+            "default": "BSE industry classification"
+          },
+          "period_start": {
+            "type": "string",
+            "format": "date",
+            "title": "Period Start"
+          },
+          "period_end": {
+            "type": "string",
+            "format": "date",
+            "title": "Period End"
+          },
+          "net_equity_inr": {
+            "type": "number",
+            "title": "Net Equity Inr"
+          },
+          "equity_auc_inr": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Equity Auc Inr"
+          },
+          "available_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Available At"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceRef"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evidence_id",
+          "sector",
+          "taxonomy",
+          "period_start",
+          "period_end",
+          "net_equity_inr",
+          "equity_auc_inr",
+          "available_at",
+          "source"
+        ],
+        "title": "SectorFlow"
       },
       "ShareholdingSnapshot": {
         "properties": {

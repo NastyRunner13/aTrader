@@ -7,6 +7,7 @@ Filings, announcements and news are fetched per run through the HTTP cache.
 
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
@@ -14,7 +15,13 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from atrader.contracts import InstitutionalActivity, PriceBar
+from atrader.contracts import (
+    DocumentPassage,
+    InstitutionalActivity,
+    OwnershipPosition,
+    PriceBar,
+    SectorFlow,
+)
 from atrader.timeutil import end_of_day_ist
 
 if TYPE_CHECKING:
@@ -79,6 +86,14 @@ CREATE TABLE IF NOT EXISTS institutional_activity (
     payload TEXT NOT NULL,
     PRIMARY KEY (session, participant, scope, basis, provider, available_at)
 );
+CREATE TABLE IF NOT EXISTS research_evidence (
+    kind TEXT NOT NULL,
+    isin TEXT NOT NULL,
+    identity TEXT NOT NULL,
+    available_at TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    PRIMARY KEY (kind, isin, identity)
+);
 """
 
 _SESSION_TABLES = {"equity": "ingested_sessions", "index": "index_sessions",
@@ -136,9 +151,37 @@ class MarketStore:
 
     # --- bars ----------------------------------------------------------------------------
 
+    def save_research_evidence(self, isin: str,
+                              rows: Iterable[DocumentPassage | OwnershipPosition | SectorFlow]
+                              ) -> int:
+        payloads = []
+        for row in rows:
+            available = (row.source.published_at or row.source.retrieved_at) \
+                if isinstance(row, DocumentPassage) else row.available_at
+            if available is None or available.tzinfo is None:
+                raise ValueError("research evidence needs an aware availability timestamp")
+            payload = row.model_dump_json(exclude={"evidence_id"})
+            payloads.append((type(row).__name__, isin, hashlib.sha256(payload.encode()).hexdigest(),
+                             available.isoformat(), payload))
+        with self._connect() as conn:
+            before = conn.total_changes
+            conn.executemany("INSERT OR IGNORE INTO research_evidence VALUES (?,?,?,?,?)", payloads)
+            return conn.total_changes - before
+
+    def research_evidence[T: (DocumentPassage, OwnershipPosition, SectorFlow)](
+        self, model: type[T], isin: str, cutoff: date,
+    ) -> list[T]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT payload FROM research_evidence WHERE kind=? AND isin=? "
+                "AND julianday(available_at)<=julianday(?) ORDER BY julianday(available_at) DESC",
+                (model.__name__, isin, end_of_day_ist(cutoff).isoformat())).fetchall()
+        return [model.model_validate_json(p) for (p,) in rows]
+
     def save_institutional_activity(self, rows: Iterable[InstitutionalActivity]) -> int:
         """Retain revisions so later observations cannot rewrite earlier research."""
-        payload = [(r.session.isoformat(), r.participant, r.scope, r.basis, r.source.provider,
+        payload = [(r.session.isoformat(), r.participant, r.scope, r.basis,
+                    f"{r.source.provider}:{r.date_basis}:{r.route}",
                     r.available_at.isoformat(), r.model_dump_json()) for r in rows]
         with self._connect() as conn:
             before = conn.total_changes
@@ -155,10 +198,11 @@ class MarketStore:
                 "AND julianday(available_at) <= julianday(?) ORDER BY julianday(available_at)",
                 (cutoff.isoformat(), boundary.isoformat()),
             ).fetchall()
-        latest: dict[tuple[date, str, str, str, str], InstitutionalActivity] = {}
+        latest: dict[tuple[object, ...], InstitutionalActivity] = {}
         for (payload,) in rows:
             row = InstitutionalActivity.model_validate_json(payload)
-            latest[(row.session, row.participant, row.scope, row.basis, row.source.provider)] = row
+            latest[(row.session, row.participant, row.scope, row.basis, row.source.provider,
+                    row.date_basis, row.route)] = row
         days = sorted({r.session for r in latest.values()}, reverse=True)[:sessions]
         return sorted((r for r in latest.values() if r.session in days),
                       key=lambda r: (r.session, r.scope, r.basis, r.participant, r.source.provider))

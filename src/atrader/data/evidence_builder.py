@@ -16,6 +16,7 @@ from atrader.analytics.flows import MIN_SESSIONS as MIN_DELIVERY_SESSIONS
 from atrader.analytics.flows import WINDOW as FLOW_WINDOW
 from atrader.analytics.institutional import institutional_metrics
 from atrader.analytics.metrics import number, pack_metrics, resolve_metric_ids
+from atrader.analytics.ownership import ownership_metrics
 from atrader.analytics.prices import split_bonus_adjust
 from atrader.config import Settings
 from atrader.contracts import (
@@ -23,35 +24,43 @@ from atrader.contracts import (
     Coverage,
     CoverageEntry,
     DerivedMetric,
+    DocumentPassage,
     EvidencePack,
     FinancialFact,
     IndexSeries,
     InstitutionalActivity,
     Listing,
     NewsItem,
+    OwnershipPosition,
     PriceBar,
     ResearchRequest,
+    SectorFlow,
     ShareholdingSnapshot,
     SourceRef,
 )
+from atrader.data.documents import collect_annual_reports, collect_documents, select_passages
 from atrader.data.http import FetchError, PoliteClient
 from atrader.data.providers import (
+    corporate_actions,
     gdelt_news,
+    nsdl,
     nse_announcements,
     nse_bhavcopy,
     nse_institutional,
     nse_sectors,
     nse_shareholding,
+    ownership,
 )
 from atrader.data.providers.nse_filings import FilingRef, list_result_filings, select_filings
 from atrader.data.providers.nse_instruments import InstrumentMaster
+from atrader.data.statement_tags import SEGMENT_TAGS, STATEMENT_LABELS
 from atrader.data.store import MarketStore
 from atrader.data.xbrl import KEY_LABELS, XbrlParseError, parse_results_xbrl
 from atrader.timeutil import end_of_day_ist, now_utc, today_ist
 
 logger = logging.getLogger(__name__)
 
-QUARTERS_OF_RESULTS = 8  # two non-overlapping trailing years, when available
+QUARTERS_OF_RESULTS = 24  # six years for cash conversion and historical margin ranges
 MAX_ANNOUNCEMENTS = 25
 MAX_SHAREHOLDING = 4
 MAX_NEWS = 20
@@ -120,19 +129,23 @@ class NseEvidenceBuilder:
         self._progress("institutional market activity")
         activity, activity_metrics, activity_coverage = self._institutional(cutoff)
         coverage.append(activity_coverage)
-
-        for category, detail in (
-            ("business_economics", "Structured segments, customer concentration, competitive "
-             "advantage and reinvestment economics are not collected yet."),
-            ("financial_resilience", "Cash-flow statements, debt maturities and bank/NBFC "
-             "asset-quality and funding metrics are not collected yet."),
-            ("institutional_sector_activity", "Fortnightly sector FPI net investment and "
-             "assets under custody are not collected; holding-value changes are not flows."),
-            ("institutional_ownership", "Detailed company FPI and mutual-fund shares and "
-             "percentages are not collected; volume/delivery cannot identify institutions."),
-        ):
-            coverage.append(CoverageEntry(category=category, status=Coverage.NOT_REQUESTED,
-                                          detail=detail))
+        self._progress("filing documents and institutional ownership")
+        documents, positions, sectors, research_coverage = self._research_sources(
+            listing, cutoff, announcements)
+        coverage.extend(research_coverage)
+        statement_count = sum(f.metric in STATEMENT_LABELS for f in facts)
+        segment_count = sum(bool(f.dimensions) for f in facts)
+        coverage.extend([
+            CoverageEntry(category="financial_resilience", status=Coverage.PARTIAL
+                          if statement_count else Coverage.MISSING,
+                          detail=f"{statement_count} statement facts; stress calculations require "
+                          "compatible annual inputs. Maturities, restricted cash and guarantees "
+                          "require cited document terms; absence never establishes safety."),
+            CoverageEntry(category="business_economics", status=Coverage.PARTIAL
+                          if segment_count or documents else Coverage.MISSING,
+                          detail=f"{segment_count} dimensional segment facts and {len(documents)} "
+                          "filing passages; findings require citations and exact quotes."),
+        ])
 
         coverage.append(CoverageEntry(category="macro", status=Coverage.NOT_REQUESTED,
                                       detail="Macro/geopolitics adapters (RBI, MoSPI) are not "
@@ -141,6 +154,15 @@ class NseEvidenceBuilder:
                                       detail="Reddit access is disabled until approved access "
                                              "and permitted processing are confirmed."))
 
+        actions, action_errors, actions_since = corporate_actions.collect_actions(
+            self._client, listing.symbol, cutoff)
+        actions = number(actions, "C")
+        positions = number(positions, "H")
+        coverage.append(CoverageEntry(
+            category="corporate_actions",
+            status=Coverage.PARTIAL if actions_since else Coverage.MISSING,
+            detail=f"Action listing covers from {actions_since}; unrecognised actions and "
+                   "ISIN changes prevent share-change inference. " + "; ".join(action_errors)))
         facts = number(facts, "F")
         return EvidencePack(
             listing=listing,
@@ -148,8 +170,14 @@ class NseEvidenceBuilder:
             built_at=now_utc(),
             facts=tuple(facts),
             metrics=tuple(resolve_metric_ids([*pack_metrics(bars, facts, indices),
-                                              *activity_metrics])),
+                                              *activity_metrics,
+                                              *ownership_metrics(positions, actions,
+                                                                 actions_since=actions_since)])),
             institutional_activity=tuple(activity),
+            documents=tuple(number(documents, "D")),
+            ownership=tuple(positions),
+            corporate_actions=tuple(actions),
+            sector_flows=tuple(number(sectors, "T")),
             announcements=tuple(number(announcements, "A")),
             shareholding=tuple(number(shareholding, "S")),
             news=tuple(number(news, "N")),
@@ -161,11 +189,64 @@ class NseEvidenceBuilder:
 
     # --- sources -------------------------------------------------------------------------
 
+    def _research_sources(self, listing: Listing, cutoff: date, announcements: list[Announcement]
+                          ) -> tuple[list[DocumentPassage], list[OwnershipPosition],
+                                     list[SectorFlow], list[CoverageEntry]]:
+        documents, doc_errors = collect_documents(self._client, announcements)
+        self._store.save_research_evidence(listing.isin, documents)
+        stored_docs = self._store.research_evidence(DocumentPassage, listing.isin, cutoff)
+        annual_docs, annual_errors = collect_annual_reports(
+            self._client, listing.symbol, cutoff, stored_docs)
+        self._store.save_research_evidence(listing.isin, annual_docs)
+        doc_errors.extend(annual_errors)
+        documents = select_passages([*stored_docs, *annual_docs])
+        positions, own_errors = ownership.collect_ownership(
+            self._client, listing.symbol, listing.isin, cutoff)
+        self._store.save_research_evidence(listing.isin, positions)
+        stored_ownership = self._store.research_evidence(OwnershipPosition, listing.isin, cutoff)
+        unique_positions: dict[tuple[object, ...], OwnershipPosition] = {}
+        for row in stored_ownership:
+            if row.period_end <= cutoff:
+                unique_positions.setdefault((row.period_end, row.level, row.category,
+                                             row.holder, row.source.provider), row)
+        positions = list(unique_positions.values())
+        sector_errors: list[str] = []
+        if cutoff >= today_ist():
+            sector_rows, sector_errors = nsdl.collect_sectors(self._client, cutoff)
+            self._store.save_research_evidence("market", sector_rows)
+        sector_rows = self._store.research_evidence(SectorFlow, "market", cutoff)
+        unique_sectors: dict[tuple[object, ...], SectorFlow] = {}
+        for sector in sector_rows:
+            if sector.period_end <= cutoff:
+                unique_sectors.setdefault((sector.sector, sector.period_start, sector.period_end),
+                                          sector)
+        sectors = list(unique_sectors.values())[:100]
+        coverage = []
+        for category, rows, errors, detail in (
+            ("documents", documents, doc_errors, "Page-linked excerpts; scanned pages need OCR. "
+             "Bounded collection is not a complete annual-report review."),
+            ("institutional_ownership", positions, own_errors,
+             "Category totals and named holders remain separate; absence is not an exit. "
+             "Fund percentages of NAV are never company ownership percentages."),
+            ("institutional_sector_activity", sectors, sector_errors,
+             "NSDL equity net investment is separate from assets under custody; "
+             "retrieval time bounds historical availability."),
+        ):
+            status = (Coverage.PARTIAL if rows else
+                      Coverage.ACCESS_BLOCKED if errors else Coverage.MISSING)
+            coverage.append(CoverageEntry(category=category, status=status,
+                                          detail=f"{len(rows)} records. {detail} "
+                                          + "; ".join(errors)[:1800]))
+        return documents, positions, sectors, coverage
+
     def _institutional(self, cutoff: date) -> tuple[list[InstitutionalActivity],
                                                    list[DerivedMetric], CoverageEntry]:
         errors: list[str] = []
         if cutoff >= today_ist():
             _, errors = nse_institutional.collect_activity(self._client, self._store)
+            confirmed, confirmed_errors = nsdl.collect_confirmed(self._client)
+            self._store.save_institutional_activity(confirmed)
+            errors.extend(confirmed_errors)
         rows = number(self._store.institutional_activity(cutoff), "I")
         # Price/index archives supply the session calendar; activity alone cannot prove
         # there were no missing trading days between the observations we happened to save.
@@ -187,7 +268,8 @@ class NseEvidenceBuilder:
                   "trends across FPI/DII and NSE-only/combined scopes. Provisional cash "
                   "activity, no company-level attribution or scoring weight. History "
                   "accumulates on collection; availability uses observation timestamps, "
-                  "not backdated session dates. Custodian-confirmed data is not collected.")
+                  "not backdated session dates. Custodian-confirmed FPI routes, when available, "
+                  "use reporting dates and are excluded from trading-session sums.")
         if errors:
             detail += " Collection issues: " + "; ".join(errors)
         return rows, metrics, CoverageEntry(category="institutional_market_activity",
@@ -309,9 +391,12 @@ class NseEvidenceBuilder:
                            published_at=ref.filed_at, retrieved_at=fetched.retrieved_at,
                            content_hash=fetched.sha256)
         keep = [x for x in parsed.facts
-                if x.metric in KEY_LABELS and x.duration in ("quarter", "annual")]
+                if x.metric in (KEY_LABELS.keys() | STATEMENT_LABELS.keys() | SEGMENT_TAGS)
+                and x.duration in ("quarter", "half_year", "annual", "instant")
+                and x.period_end <= ref.period_end]
         if sum(1 for x in keep if x.duration == "quarter") < 4:
-            keep = [x for x in parsed.facts if x.duration == "quarter"][:40]
+            keep += [x for x in parsed.facts if x.duration == "quarter" and x not in keep
+                     and x.period_end <= ref.period_end][:40]
         return [
             FinancialFact(
                 isin=listing.isin, metric=x.metric, label=x.label, value=x.value, unit=x.unit,
@@ -319,6 +404,7 @@ class NseEvidenceBuilder:
                 basis=parsed.basis or ref.basis,
                 audited=parsed.audited if parsed.audited is not None else ref.audited,
                 rounding=parsed.rounding, filed_at=ref.filed_at, source=source,
+                dimensions=x.dimensions,
             )
             for x in keep
         ]
@@ -343,7 +429,7 @@ class NseEvidenceBuilder:
                   f"({orders} order/contract intimations); {len(routine)} routine filings "
                   f"omitted from prompts; {truncated} additional disclosures omitted by "
                   "the prompt limit. Broad Updates are retained for content review; "
-                  "attachment contents are not loaded.")
+                  "attachment extraction is tracked under documents coverage.")
         status = (Coverage.PARTIAL if truncated else Coverage.AVAILABLE if eligible
                   else Coverage.MISSING)
         return kept, CoverageEntry(category="announcements", status=status, detail=detail,
@@ -392,9 +478,10 @@ class NseEvidenceBuilder:
 
 def _merge_restatements(facts: list[FinancialFact]) -> list[FinancialFact]:
     """Keep the latest-filed value per period; note when an earlier filing differed."""
-    groups: dict[tuple[str, date | None, date, str], list[FinancialFact]] = {}
+    groups: dict[tuple[object, ...], list[FinancialFact]] = {}
     for fact in facts:
-        groups.setdefault((fact.metric, fact.period_start, fact.period_end, fact.duration),
+        groups.setdefault((fact.isin, fact.basis, fact.metric, fact.period_start,
+                           fact.period_end, fact.duration, fact.unit, fact.dimensions),
                           []).append(fact)
     merged: list[FinancialFact] = []
     for versions in groups.values():

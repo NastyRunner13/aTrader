@@ -410,7 +410,7 @@ const MODES: { value: Mode; title: string; cap: number; text: string; usage: str
     title: "Data only",
     cap: 0,
     text: "NSE data and scoring rules. No model analysis or news score.",
-    usage: "No model requests · About a minute",
+    usage: "No model requests · Collection time varies",
   },
   {
     value: "compact",

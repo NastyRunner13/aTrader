@@ -1,114 +1,136 @@
-# Investor research: implementation and remaining work
+# Investor research
 
-The 8 October 2026 brief broadens research to business economics, financial
-resilience, governance and expectations. Implementation through 9 October uses the
-existing agents and call budgets. Prompt instructions do not supply financial
-data the collectors do not yet have.
+The 8 October 2026 brief is implemented through the existing analysts, evidence
+archive, deterministic calculations and report workspace. Compact/full retain their
+6/11 planned model calls. These features add research evidence, not scoring weights.
 
-## Implemented foundation
+## Investigations and their boundaries
 
-- `scorecard/3` removes promoter-percentage rewards/penalties and single-quarter
-  PEG. Ownership changes remain visible for investigation. Positive-earnings
-  valuation needs a positive sector or market index P/E; missing comparisons leave
-  it unscored. Loss-making trailing earnings retain the existing loss rule.
-  Index-relative valuation has low confidence: earnings are not normalised.
-- The steward requests eight result filings instead of five, subject to source
-  availability and the knowledge cutoff. Revenue, profit and basic EPS growth
-  compare two separate four-quarter totals. Missing, overlapping or incompatible
-  periods suppress these metrics; non-positive prior totals produce no growth rate.
-- Two-year scenarios use trailing-year EPS growth instead of one quarter's
-  revenue/profit growth. Without eight comparable quarters, the range is absent.
-  Reported EPS still requires corporate-action comparability review.
-- Reverse earnings sensitivity calculates annual EPS growth needed for a 10%
-  annual price return over two years, assuming an exit P/E equal to the positive
-  sector index P/E, or market index as fallback. Inputs are cited and assumptions
-  labelled. Dividends are excluded. It earns no scoring points and is not a reverse DCF.
-- Broad `Updates` disclosures reach content review. The latest 25 eligible
-  disclosures remain the prompt limit; truncation is counted and coverage becomes
-  partial. Existing narrow routine categories are still omitted. PDFs are not read.
-- Agent prompts cover all ten questions using existing cited claims and named
-  gaps. Fundamentals and risk reviewers now receive disclosure summaries. Topic
-  completeness is a prompt requirement, not a new enforced output schema.
-- Coverage names missing business economics, financial resilience, sector FPI
-  activity and detailed institutional ownership separately.
-- Daily NSE provisional FPI/DII cash activity is collected with separate NSE-only
-  and combined-exchange identities. Observations and revisions persist in SQLite;
-  5/20/60-session sums require complete windows against the stored price/index
-  calendar. Missing sessions produce unknown values, not shortened sums or zero.
-  Figures, observation dates, source links and gaps appear in agents, the evidence
-  drawer and exported reports. No automatic scoring weight is added.
-- The manager returns up to three structured thesis assumptions, observable failure
-  conditions and next events. Assumptions require known citations; next events
-  require official announcement citations and, when dated, a date after the cutoff.
-  Unknown events remain unknown and missing assumptions are reported as unresolved.
-  These checks establish traceability; they do not verify semantic entailment.
+| Investigation | Implemented | Limit of the evidence |
+| --- | --- | --- |
+| Business model | Ten-topic structured findings, segment revenue/results, customers and revenue-driver passages | Segment disclosures and extracted passages can be incomplete |
+| Competitive advantage | Quoted evidence, mechanism, threats, direction and explicit gaps | Quotes establish traceability; moat judgements require human review |
+| Reinvestment | Annual capital history, ROIC/incremental-return accounting proxies, comparable per-share history | Accounting capital is not economic capital; missing opening balances suppress returns |
+| Cash conversion | Annual and contiguous three-year OCF/PAT, FCF after total capex, working-capital ratios, exceptional/capitalisation passages | Maintenance capex is not inferred from total capex |
+| Resilience | Cash/debt, liquidity, interest coverage and joint demand/margin/rate stress; disclosed funding terms | Stress is conditional; restricted cash, maturities and guarantees remain gaps when undisclosed |
+| Management | Capital allocation history and dated, quoted promise/outcome pairs in saved reports | Later publication is required for outcomes; delivery assessments remain model judgements |
+| Growth runway | Capacity/customer/order passages and structured amount, status, execution, margin, funding and cancellation terms | Awards are not added to reported backlog or treated as secured revenue |
+| Earnings normality | Up to 24 quarterly filings, annual margin history and a historical-median-margin EPS sensitivity | Available history is not automatically a complete business cycle |
+| Valuation | Reverse EPS sensitivity, revenue/margin/reinvestment DCF roots and nine conditional valuation scenarios | No root or multiple roots remain explicit; assumed incremental returns are not forecasts |
+| Thesis failure | Three cited assumptions/falsifiers, disclosed upcoming events and supplied-portfolio concentration | No holdings or correlations are inferred; unavailable events remain unknown |
 
-Reverse sensitivity formula (dividends excluded):
+Banks/NBFCs use loans, deposits, provisions, NPA and regulatory capital fields where
+reported. Industrial cash/debt and DCF rules are excluded for these businesses.
+The taxonomy does not yet cover every insurer or specialist financial business.
 
-```text
-required EPS CAGR = sqrt(current trailing P/E / assumed exit P/E) * 1.10 - 1
+The earlier corrections remain: no single-quarter PEG or promoter-percentage
+bonus, comparable trailing-year growth, and broad Updates disclosures included.
+Index-relative valuation remains a low-confidence comparison. No new institutional
+or research score weights are fitted or enabled automatically.
+
+## Sources and point-in-time behaviour
+
+The steward preserves XBRL statement basis, duration, units, dimensions and filing
+date. Missing, incompatible or ambiguous inputs suppress calculations. Curated
+segment axes are retained without adding overlapping segments to group totals.
+
+Official annual reports (latest three eligible years), presentations and recent
+announcement PDFs produce page-linked passages. Full extracted passages persist in
+SQLite; a bounded, topic-balanced selection of up to 80 enters each pack and up to
+20 shortened passages enters agent context. Older and newer disclosures support
+management comparisons. Scanned pages need OCR and appear as gaps. Extraction can
+lose table layout; collection is not a complete annual-report review.
+
+Findings must cite known evidence. Document citations require exact quoted text
+(after whitespace normalization). Invalid quotations are discarded and missing
+topics become unknown. These checks do not establish semantic support for an
+interpretation. Filing text is treated as untrusted evidence in prompts.
+
+| Dataset | Identity and handling |
+| --- | --- |
+| NSE provisional daily cash | Separate NSE-only/combined scope, participant, gross purchases/sales/net, observation date; 5/20/60 trading-session windows require complete stored history |
+| NSDL confirmed FPI | Reporting dates and stock-exchange/primary-other routes stay separate from provisional trading-date series |
+| NSDL fortnightly sector | Source taxonomy, period, equity net investment and equity assets under custody kept distinct |
+| Exchange ownership | ISIN, category/named holder, shares, company percentage, pledge/encumbrance, period and publication date; overlapping categories are never summed |
+| Mutual funds | AMFI directory discovery plus official .xlsx quantity imports; fund NAV percentage is never company ownership |
+| Corporate actions | Explicit split/bonus ratios adjust comparable holdings; unrecognized actions or incomplete history suppress quantity changes |
+
+Absence is not an exit; an explicit zero is needed. Percentage changes can reflect
+dilution. Aggregate cash activity and delivery volume do not identify buyers of a
+particular stock. Holdings value/AUC changes can reflect market prices.
+
+Captures and revisions persist. A source without a publication timestamp uses its
+actual observation time, never a backdated reporting period. Historical research
+uses only eligible archives. Imports require the operator to supply the real
+publication/observation date; the software cannot independently authenticate it.
+
+Live NSE filings, annual-report extraction and the AMFI directory were checked.
+NSDL production endpoints refused access during this implementation. Their parsers
+were checked against captured layout fixtures, and failure is recorded as missing
+coverage. Pilot pages are never substituted automatically for production data.
+Fund imports support explicit ISIN/quantity .xlsx tables; legacy .xls and arbitrary
+AMC layouts need separate adapters. There is no automatic AMC download crawler or
+installed collection scheduler.
+
+## Commands
+
+Run these from the project root after installing dependencies:
+
+```powershell
+uv run atrader ingest-institutional
+uv run atrader fund-disclosures
+uv run atrader import-document report.pdf ISIN "2026-05-14T18:30:32+05:30" SOURCE_URL
+uv run atrader import-fund-portfolio holdings.xlsx "Fund name" 2026-09-30 "2026-10-08T12:00:00+05:30" SOURCE_URL
+uv run atrader import-institutional capture.html nsdl-confirmed "2026-10-08T12:00:00+05:30" SOURCE_URL
+uv run atrader reverse-valuation assumptions.json valuation.json
+uv run atrader portfolio-risk positions.json exposure.json
+uv run atrader benchmark frozen-pack.json reports/benchmark --ablations
+uv run atrader evaluate reports/benchmark reports/evaluation.json
+uv run atrader audit-summary reports/evaluation.json reports/audit-summary.json
 ```
 
-Historical growth, management guidance, analyst consensus, our assumptions and
-price-implied requirements are distinct. Two trailing years are not a business cycle.
+`ingest-institutional` captures NSE provisional observations; current-date research
+also attempts NSDL confirmed and sector collection. Institutional import datasets
+are `nse`, `combined` (JSON), `nsdl-confirmed` and `nsdl-sectors` (HTML).
+`frozen-pack.json` is the `pack` object from an exported report, not the full report.
+Benchmark defaults to fake-model workflow checks; `--live` explicitly enables the
+existing free-only gateway and quota. It runs data-only, one-call baseline, compact,
+full, and optionally four compact evidence ablations, removing dependent metrics.
+Ablation coverage explicitly identifies omitted sources.
 
-## Responsibilities and next deliverables
+Valuation input uses amounts in one common currency and rates as fractions:
 
-| Investigation | Owner | Data/implementation still needed |
-| --- | --- | --- |
-| Business model | Fundamentals | Structured revenue drivers, customer concentration, segment economics and source passages |
-| Competitive advantage | Fundamentals | Mechanism, retention/pricing/share evidence, threats and change over time |
-| Value-creating reinvestment | Fundamentals | Multi-year ROIC, incremental returns, capital requirements and per-share results |
-| Cash conversion | Fundamentals | Cash-flow/balance-sheet facts, collections, inventory, maintenance capex, capitalisation and recurring exceptionals |
-| Financial resilience | Fundamentals + conservative review | Debt schedule, rates, restricted cash, guarantees, commitments and joint stress calculations; bank/NBFC taxonomy |
-| Management and governance | Fundamentals + news | Dated capital-allocation decisions and persisted promise/outcome records with both source passages |
-| Growth runway | Fundamentals + news | Penetration and capacity economics; order value, margins, funding, cancellation terms and working capital from documents |
-| Earnings normality | Fundamentals | Longer history, through-cycle earnings/margins and sector operating indicators; distinguish recovery from structural growth |
-| Valuation expectations | Fundamentals + manager | Normalised valuation ranges and reverse growth/margin/reinvestment scenarios beyond the EPS sensitivity |
-| Thesis failure and estimation error | Manager + debate | Structured cited assumptions, falsifiers and next events implemented; semantic evaluation, margin for estimation error and portfolio exposures still needed |
+```json
+{"revenue":1000,"operating_margin":0.15,"tax_rate":0.25,"return_on_new_capital":0.2,"discount_rate":0.12,"terminal_growth":0.04,"years":5,"net_debt":100,"equity_value":1200}
+```
 
-Banks and NBFCs need credit quality, credit costs, capital and funding analysis.
-Industrial cash-conversion and ordinary debt rules cannot substitute for that
-framework. Missing data stays a gap rather than a favourable assessment.
+Portfolio input is a list of supplied positions in one common valuation currency:
 
-## Institutional datasets: separate collectors and identities
+```json
+[{"isin":"EXAMPLE1","market_value":1000,"currency":"INR","sector":"Industrials","shared_exposures":["public infrastructure"]}]
+```
 
-| Dataset | Required identity and measures | Status |
-| --- | --- | --- |
-| Daily FPI/DII cash activity | Session, participant, exchange scope, basis, gross buys/sales/net in base INR, observation time and source; 5/20/60-session sums | Latest-session provisional collector and stored-history trends implemented; historical backfill and custodian-confirmed data pending |
-| Sector FPI context | Fortnight, sector taxonomy, source, net investment separate from assets under custody | Collector pending |
-| Company institutional ownership | ISIN, holder/category, reporting/publication dates, shares, percentage, corporate-action adjustment and source; new positions/exits | Exchange XBRL and mutual-fund disclosure collectors pending |
-| Volume and delivery | Security/session, turnover, volume and delivery participation | Collected; cannot identify institutional buyers/sellers |
+## Evaluation and remaining validation
 
-Keep NSE-only activity separate from combined NSE/BSE/MSEI data, provisional exchange
-cash activity separate from custodian-confirmed reporting, and stock-exchange
-investment separate from primary/other investment. Do not blindly merge or sum
-these series. Holdings value can rise with prices; ownership percentages can fall
-through dilution. Derivatives can hedge cash positions. Aggregate purchases cannot
-establish buying in a particular security.
+Evaluation reports citation failures, future filing dates, calls, cost and latency,
+and prepares ungraded source-linked claims for human review. Fill `human_support`
+with a boolean and `human_notes` in the exported `human_audit` entries, then run
+`audit-summary`. It reports the actual reviewed denominator and a Wilson interval;
+a machine-valid citation is never counted as a human-supported claim.
 
-The collector uses the [official NSE report](https://www.nseindia.com/reports/fii-dii)
-and is tested against captured response fixtures. Its endpoints expose the latest
-session only. Run `atrader ingest-institutional` after market reporting to accumulate
-observations; normal ingestion and current-date research also collect them. No
-scheduler is installed. Publication timestamps are absent, so retrieval time is
-the conservative knowledge boundary; captures are never backdated to session dates.
-Historical-cutoff research uses stored observations only. Price/index ingestion
-supplies the market calendar; institutional-only ingestion does not create it.
+Forward returns use the next stored session open and stored 21/126/504-session
+horizons, when available. They exclude dividends and costs; sparse archives, sample
+selection and model training-data hindsight limit interpretation. The harness does
+not fit score weights or establish predictive accuracy.
 
-Keep incomplete windows explicit. Evaluate whether flows improve one-month
-analysis, with business economics and valuation still central at two years.
+Regression coverage includes real industrial/bank/NBFC filing excerpts, unit and
+period traps, ownership/corporate-action comparisons, NSDL route/sector layouts,
+quote and chronology validation, valuation recovery and graph call budgets.
+API additions have empty defaults so existing reports still load. Evidence drawers
+and Markdown exports expose the new sources, assumptions and investigations.
 
-## Validation and compatibility
-
-Regression tests cover scoring invariance to quarterly growth and promoter
-percentages, period continuity/comparability, the reverse-sensitivity equation and
-citations, announcement cutoff/truncation, explicit coverage gaps, institutional
-units/scopes/revisions/cutoffs, incomplete session windows and thesis filtering. Graph tests
-exercise both AI modes with a fake gateway and unchanged model-call counts.
-
-API and stored-report schemas add optional institutional activity and thesis tests;
-older reports load with empty defaults. Archived reports retain their original
-scorecard version. New reports can have fewer signals or no two-year range because
-missing valuation/history no longer gets a quarterly-growth substitute. Live-source
-access and real-model research quality still need separate evaluation.
+Still outstanding are successful production NSDL collection, broader AMC layout
+coverage, the ten-company live pilot, a blinded human research-quality audit and
+out-of-sample score validation. No claim that full mode beats compact or that these
+signals predict returns has been established. Unrelated macro, screener, alert and
+derivatives work remains tracked in the main roadmap.
